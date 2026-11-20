@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Taxi-v4 Mission Control — SARSA vs DQN vs PPO vs SAC</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #070B14;
+    --card: rgba(17, 24, 39, 0.80);
+    --elev: rgba(22, 32, 51, 0.92);
+    --well: #0B1120;
+    --border: rgba(51, 65, 85, 0.70);
+    --text: #F8FAFC;
+    --sub: #CBD5E1;
+    --muted: #8899B4;
+    --gold: #FACC15;
+    --cyan: #38BDF8;
+    --violet: #A78BFA;
+    --emerald: #34D399;
+    --rose: #FB7185;
+    --head: 'Space Grotesk', 'Segoe UI', system-ui, sans-serif;
+    --body: 'Inter', 'Segoe UI', system-ui, sans-serif;
+    --mono: 'JetBrains Mono', 'Consolas', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #03050A; color: var(--text); font-family: var(--body); -webkit-font-smoothing: antialiased; }
+  body.idle { cursor: none; }
+
+  /* ---------- Fixed 1280x720 artboard, scaled to any screen ---------- */
+  #viewport { width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  #deck { width: 1280px; height: 720px; position: relative; overflow: hidden; background: var(--bg); flex-shrink: 0; transform-origin: center center; }
+  #deck::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 0;
+    background-image:
+      radial-gradient(circle at 88% 8%, rgba(56,189,248,0.13), transparent 38%),
+      radial-gradient(circle at 8% 92%, rgba(250,204,21,0.10), transparent 40%),
+      linear-gradient(rgba(148,163,184,0.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148,163,184,0.045) 1px, transparent 1px);
+    background-size: 100% 100%, 100% 100%, 64px 64px, 64px 64px;
+  }
+  #ambient { position: absolute; inset: 0; z-index: 1; pointer-events: none; transition: opacity 0.6s ease; }
+  #progress { position: absolute; top: 0; left: 0; right: 0; height: 3px; background: rgba(30,41,59,0.9); z-index: 40; }
+  #progress > div { height: 100%; width: 0; background: linear-gradient(90deg, var(--gold), var(--cyan), var(--emerald)); box-shadow: 0 0 12px rgba(56,189,248,0.7); transition: width 0.45s cubic-bezier(.22,1,.36,1); }
+
+  /* ---------- Slides ---------- */
+  .slide { position: absolute; inset: 0; z-index: 5; padding: 30px 52px 54px; display: flex; flex-direction: column; opacity: 0; pointer-events: none; transform: translateY(16px) scale(0.99); transition: opacity .42s cubic-bezier(.22,1,.36,1), transform .5s cubic-bezier(.22,1,.36,1); }
+  .slide.active { opacity: 1; pointer-events: auto; transform: none; }
+  .slide .r { opacity: 0; transform: translateY(14px); transition: opacity .45s ease, transform .5s cubic-bezier(.22,1,.36,1); }
+  .slide.active .r { opacity: 1; transform: none; }
+  .slide.active .d1 { transition-delay: .05s } .slide.active .d2 { transition-delay: .12s } .slide.active .d3 { transition-delay: .19s } .slide.active .d4 { transition-delay: .26s } .slide.active .d5 { transition-delay: .33s }
+
+  .hdr { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 12px; margin-bottom: 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .tag-sec { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; margin-bottom: 4px; }
+  .title { font-family: var(--head); font-size: 29px; font-weight: 700; letter-spacing: -.02em; line-height: 1.15; }
+  .chip { font-family: var(--mono); font-size: 10.5px; font-weight: 700; padding: 6px 11px; border-radius: 999px; background: rgba(15,23,42,.9); border: 1px solid var(--border); color: var(--sub); white-space: nowrap; display: flex; align-items: center; gap: 7px; }
+  .chip i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; box-shadow: 0 0 8px currentColor; }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; position: relative; overflow: hidden; backdrop-filter: blur(12px); }
+  .card.top::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--a, var(--cyan)); }
+  .card.elev { background: var(--elev); }
+  .pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 10.5px; font-weight: 700; padding: 4px 11px; border-radius: 999px; letter-spacing: .05em; border: 1px solid currentColor; }
+  .lbl { font-family: var(--mono); font-size: 10.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+
+  .body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 14px; }
+  .g { display: grid; gap: 14px; min-height: 0; }
+  .g2 { grid-template-columns: 1fr 1fr; } .g3 { grid-template-columns: repeat(3,1fr); } .g4 { grid-template-columns: repeat(4,1fr); }
+  .gw { grid-template-columns: 1.55fr 1fr; } .gm { grid-template-columns: 1.12fr 1fr; }
+
+  ul.ls { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+  ul.ls li { font-size: 14px; line-height: 1.5; color: var(--sub); padding-left: 18px; position: relative; }
+  ul.ls li::before { content: "▸"; position: absolute; left: 0; color: var(--a, var(--cyan)); font-weight: 700; }
+  ul.ls li b { color: var(--text); font-weight: 600; }
+  code { font-family: var(--mono); font-size: .9em; color: var(--text); background: rgba(148,163,184,.12); padding: 1px 5px; border-radius: 4px; }
+
+  .c-gold{color:var(--gold)} .c-cyan{color:var(--cyan)} .c-violet{color:var(--violet)} .c-emerald{color:var(--emerald)} .c-rose{color:var(--rose)} .c-muted{color:var(--muted)}
+
+  .eq { background: var(--elev); border: 1px solid var(--border); border-radius: 12px; padding: 10px 18px; display: flex; align-items: center; justify-content: center; gap: 14px; }
+  .eq img { max-height: 54px; max-width: 100%; object-fit: contain; }
+  .fig { background: var(--well); border: 1px solid var(--border); border-radius: 12px; padding: 8px; display: flex; align-items: center; justify-content: center; overflow: hidden; min-height: 0; }
+  .fig img { max-width: 100%; max-height: 100%; object-fit: contain; }
+
+  table.t { width: 100%; border-collapse: collapse; font-size: 13.2px; }
+  table.t th { text-align: left; font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--cyan); padding: 9px 10px; background: rgba(15,23,42,.9); border-bottom: 1px solid var(--border); }
+  table.t td { padding: 9px 10px; border-bottom: 1px solid rgba(51,65,85,.4); color: var(--text); font-variant-numeric: tabular-nums; }
+  table.t tr:last-child td { border-bottom: none; }
+
+  pre.code { font-family: var(--mono); font-size: 11.3px; line-height: 1.55; background: var(--well); border: 1px solid var(--border); border-radius: 9px; padding: 11px 13px; color: #E2E8F0; white-space: pre; overflow: hidden; }
+  .k{color:#C4B5FD;font-weight:700} .f{color:#7DD3FC} .n{color:#FDE68A} .cm{color:#64748B;font-style:italic}
+
+  .btn { font-family: var(--mono); font-size: 11.5px; font-weight: 700; padding: 6px 12px; border-radius: 8px; cursor: pointer; border: 1px solid var(--border); background: var(--elev); color: var(--text); transition: all .16s ease; }
+  .btn:hover { border-color: var(--cyan); color: var(--cyan); }
+  .btn.on { background: var(--cyan); color: #04121D; border-color: var(--cyan); }
+  .btn.go { background: rgba(52,211,153,.16); color: var(--emerald); border-color: var(--emerald); }
+  .btn.bad { background: rgba(251,113,133,.12); color: var(--rose); border-color: rgba(251,113,133,.6); }
+  input[type=range] { cursor: pointer; }
+
+  /* ---------- Taxi grid ---------- */
+  .tg { display: grid; grid-template-columns: repeat(5,1fr); gap: 4px; width: 336px; height: 336px; background: var(--well); padding: 7px; border-radius: 12px; border: 1.5px solid rgba(56,189,248,.45); flex-shrink: 0; }
+  .tc { position: relative; border-radius: 7px; border: 1px solid #1E293B; background: #0F172A; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background .25s ease, border-color .15s ease; }
+  .tc:hover { border-color: var(--cyan); }
+  .tc.we { border-right: 4px solid #FB923C; }
+  .tc .xy { position: absolute; top: 2px; left: 4px; font-family: var(--mono); font-size: 8.5px; color: #64748B; }
+  .tc .vt { position: absolute; bottom: 2px; right: 4px; font-family: var(--mono); font-size: 9px; font-weight: 700; }
+  .tc .sb { font-family: var(--head); font-size: 19px; font-weight: 700; }
+  .taxi { position: absolute; inset: 15%; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 10px; font-weight: 700; background: var(--gold); color: #070B14; box-shadow: 0 0 16px rgba(250,204,21,.7); z-index: 5; }
+  .taxi.ld { background: var(--cyan); box-shadow: 0 0 18px rgba(56,189,248,.8); }
+  .taxi.dn { background: var(--emerald); box-shadow: 0 0 22px rgba(52,211,153,.9); }
+
+  /* ---------- Chapter interstitial ---------- */
+  #chapter { position: absolute; inset: 0; z-index: 30; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(7,11,20,.94); opacity: 0; transition: opacity .35s ease; }
+  #chapter.show { opacity: 1; }
+  #chapter .num { font-family: var(--mono); font-size: 13px; letter-spacing: .4em; color: var(--muted); }
+  #chapter .name { font-family: var(--head); font-size: 64px; font-weight: 700; letter-spacing: -.03em; margin: 10px 0 14px; }
+  #chapter .who { font-family: var(--mono); font-size: 15px; font-weight: 700; padding: 8px 18px; border-radius: 999px; border: 1px solid currentColor; }
+  #chapter .bar { width: 0; height: 2px; margin-top: 26px; background: currentColor; transition: width 1.1s cubic-bezier(.22,1,.36,1); }
+  #chapter.show .bar { width: 320px; }
+
+  #foot { position: absolute; left: 52px; right: 52px; bottom: 18px; z-index: 20; display: flex; justify-content: space-between; align-items: center; padding-top: 9px; border-top: 1px solid var(--border); font-family: var(--mono); font-size: 10px; color: var(--muted); }
+
+  /* ---------- Presenter dock (auto-hides while idle, ideal for recording) ---------- */
+  #dock { position: fixed; bottom: 12px; right: 18px; z-index: 60; display: flex; align-items: center; gap: 5px; background: rgba(15,23,42,.92); border: 1px solid var(--border); backdrop-filter: blur(12px); padding: 5px 10px; border-radius: 999px; box-shadow: 0 10px 28px rgba(0,0,0,.5); transition: opacity .4s ease; }
+  body.idle #dock { opacity: 0; }
+  .db { background: transparent; border: none; color: var(--sub); cursor: pointer; font-family: var(--mono); font-size: 11px; font-weight: 700; padding: 5px 9px; border-radius: 999px; }
+  .db:hover, .db.on { background: rgba(56,189,248,.18); color: var(--cyan); }
+  #cnt { font-family: var(--mono); font-size: 11.5px; font-weight: 700; min-width: 52px; text-align: center; }
+  #timer { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--gold); background: rgba(250,204,21,.12); padding: 4px 9px; border-radius: 999px; cursor: pointer; }
+  #notes { position: fixed; left: 18px; bottom: 14px; width: min(480px, 90vw); z-index: 70; background: rgba(7,11,20,.97); border: 1px solid var(--cyan); border-radius: 14px; padding: 14px 16px; box-shadow: 0 20px 50px rgba(0,0,0,.6); display: none; }
+  #notes.open { display: block; }
+  #notes .h { font-family: var(--mono); font-size: 11px; color: var(--gold); display: flex; justify-content: space-between; margin-bottom: 6px; }
+  #notes .b { font-size: 13px; line-height: 1.55; color: var(--sub); max-height: 200px; overflow-y: auto; }
+  #grid { position: fixed; inset: 0; z-index: 80; background: rgba(7,11,20,.95); backdrop-filter: blur(10px); display: none; padding: 34px; overflow-y: auto; }
+  #grid.open { display: block; }
+  .tgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px,1fr)); gap: 12px; max-width: 1220px; margin: 16px auto 0; }
+  .th { background: var(--elev); border: 1px solid var(--border); border-radius: 12px; padding: 13px; cursor: pointer; }
+  .th:hover, .th.cur { border-color: var(--cyan); background: rgba(56,189,248,.1); }
+
+  @keyframes blink { 50% { opacity: .25; } }
+  .rec { animation: blink 1.2s infinite; }
+  @keyframes caret { 50% { border-color: transparent; } }
+  #typed { border-right: 2px solid var(--emerald); animation: caret .9s step-end infinite; padding-right: 3px; }
+  @keyframes pulse { 0%,100% { opacity: .35; } 50% { opacity: 1; } }
+  .hot { animation: pulse 1.6s infinite; }
+
+  .bar-row { display: grid; grid-template-columns: 58px 1fr 62px; align-items: center; gap: 10px; font-family: var(--mono); font-size: 12.5px; }
+  .bar-trk { background: rgba(148,163,184,.12); height: 20px; border-radius: 5px; overflow: hidden; }
+  .bar-fill { height: 100%; width: 0; border-radius: 5px; transition: width 1s cubic-bezier(.22,1,.36,1); }
+  .slide.active .bar-fill { width: var(--w); }
+
+  .quad { position: relative; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 12px; }
+  .qcell { border-radius: 14px; padding: 16px 18px; border: 1px solid var(--border); background: var(--card); display: flex; flex-direction: column; gap: 8px; }
+  .route { border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; background: var(--card); transition: all .3s ease; display: flex; flex-direction: column; justify-content: space-between; }
+  .slide.active .route.dim { opacity: .28; transform: scale(.98); }
+  .slide.active .route.lit { box-shadow: 0 0 0 1px var(--a), 0 0 34px -8px var(--a); transform: translateY(-3px); }
+
+  /* ---------- MDP Loop & 5-Ingredient Cards ---------- */
+  .g5 { grid-template-columns: repeat(5, 1fr); }
+  .mdp-col { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 24px 16px 20px; display: flex; flex-direction: column; align-items: center; text-align: center; justify-content: space-between; backdrop-filter: blur(12px); transition: transform .25s ease, border-color .25s ease; }
+  .mdp-col:hover { transform: translateY(-4px); border-color: var(--a); }
+  .mdp-sym { font-family: var(--head); font-size: 56px; font-weight: 700; line-height: 1; color: var(--a); text-shadow: 0 0 24px color-mix(in srgb, var(--a) 35%, transparent); }
+  @keyframes flowRight { 0% { stroke-dashoffset: 36; } 100% { stroke-dashoffset: 0; } }
+  @keyframes flowLeft  { 0% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 36; } }
+  .pulse-r { stroke-dasharray: 8 28; animation: flowRight 1.6s linear infinite; }
+  .pulse-l { stroke-dasharray: 8 28; animation: flowLeft 1.6s linear infinite; }
+</style>
+</head>
+<body>
+<div id="viewport">
+<div id="deck">
+  <canvas id="ambient" width="1280" height="720"></canvas>
+  <div id="progress"><div></div></div>
+
+  <!-- ===================================================== 01 COVER -->
+  <section class="slide active" data-ch="1" data-title="Mission Briefing" data-spk="Sijan Pandey · Roll 11" data-time="00:00 – 00:40"
+    data-notes="Hey everyone! Imagine dropping a self-driving taxi into a small city with no GPS and no rules—it has to learn pickup and drop-off purely by trial and error. I'm Sijan Pandey (Roll 11), with Ashim Shrestha (Roll 22) and Nishan (Roll 5). I'll walk through the problem and fair setup, Ashim will explain all four RL agents with live demos, and Nishan will show who won and why.">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <span class="pill c-cyan" style="background:rgba(56,189,248,.1)">● MISSION BRIEFING · REINFORCEMENT LEARNING MINI-PROJECT</span>
+      <span class="lbl c-muted">GYMNASIUM TAXI-V4 · 500 STATES · 6 ACTIONS · 4 AGENTS</span>
+    </div>
+    <div class="g" style="grid-template-columns:1.55fr 1fr; flex:1; align-items:center; gap:34px;">
+      <div>
+        <h1 class="r d1" style="font-family:var(--head); font-size:66px; line-height:1.0; letter-spacing:-.035em;">
+          Autonomous Taxi<br/><span style="background:linear-gradient(90deg,var(--gold),var(--cyan) 70%); -webkit-background-clip:text; -webkit-text-fill-color:transparent;">Pickup &amp; Drop-off</span>
+        </h1>
+        <p class="r d2" style="font-size:17.5px; color:var(--sub); margin-top:16px; line-height:1.55; max-width:620px;">
+          Four learning agents. One city grid. A controlled comparison of <b class="c-gold">SARSA</b>, <b class="c-cyan">DQN</b>, <b class="c-violet">PPO</b> and <b class="c-emerald">Discrete SAC</b> — how fast they learn, how safely they explore, and what they actually learn.
+        </p>
+        <div class="r d3" style="margin-top:18px; font-family:var(--mono); font-size:13px; color:var(--emerald); background:var(--well); border:1px solid var(--border); border-radius:10px; padding:10px 14px; max-width:620px;">
+          <span class="c-muted">$</span> <span id="typed"></span>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px;">
+        <div class="r d2 card top" style="--a:var(--cyan); padding:14px 18px;">
+          <div style="font-family:var(--mono); font-size:30px; font-weight:700; color:var(--cyan);"><span class="cu" data-v="596">596</span> eps</div>
+          <div class="lbl" style="margin-top:2px;">Fastest learner · DQN</div>
+          <div style="font-size:12.5px; color:var(--muted); margin-top:3px;">37% fewer episodes than SARSA (944)</div>
+        </div>
+        <div class="r d3 card top" style="--a:var(--emerald); padding:14px 18px;">
+          <div style="font-family:var(--mono); font-size:30px; font-weight:700; color:var(--emerald);">−<span class="cu" data-v="86">86</span>%</div>
+          <div class="lbl" style="margin-top:2px;">Safest explorer · Discrete SAC</div>
+          <div style="font-size:12.5px; color:var(--muted); margin-top:3px;">1,486 illegal moves vs 10,908 (SARSA)</div>
+        </div>
+        <div class="r d4 card top" style="--a:var(--gold); padding:14px 18px;">
+          <div style="font-family:var(--mono); font-size:30px; font-weight:700; color:var(--gold);"><span class="cu" data-v="100">100</span>%</div>
+          <div class="lbl" style="margin-top:2px;">Optimal delivery at test time</div>
+          <div style="font-size:12.5px; color:var(--muted); margin-top:3px;">DQN +7.90 · 13.10 steps · SARSA 100%</div>
+        </div>
+      </div>
+    </div>
+    <div class="r d5 card" style="display:grid; grid-template-columns:repeat(3,1fr) 1.15fr; gap:16px; align-items:center; padding:14px 20px;">
+      <div style="border-left:3px solid var(--cyan); padding-left:12px;"><div style="font-weight:700; font-size:16px;">Sijan Pandey</div><div style="font-family:var(--mono); font-size:12px; color:var(--cyan);">Roll No. 11</div></div>
+      <div style="border-left:3px solid var(--violet); padding-left:12px;"><div style="font-weight:700; font-size:16px;">Ashim Shrestha</div><div style="font-family:var(--mono); font-size:12px; color:var(--violet);">Roll No. 22</div></div>
+      <div style="border-left:3px solid var(--emerald); padding-left:12px;"><div style="font-weight:700; font-size:16px;">Nishan</div><div style="font-family:var(--mono); font-size:12px; color:var(--emerald);">Roll No. 5</div></div>
+      <div style="text-align:right; font-family:var(--mono); font-size:11px; color:var(--muted);">github.com/devsijanpandey12/<br/>RL_FINAL_MINIPROJECT</div>
+    </div>
+  </section>
+
+  <!-- ===================================================== 02 HOOK -->
+  <section class="slide" data-ch="1" data-title="The Hook: 4-Agent Race" data-spk="Sijan Pandey · Roll 11" data-time="00:40 – 01:30"
+    data-notes="PAUSE 2s for the GIF! Before any formulas, watch all four taxis drive the exact same trip from (0,1) → blue arrows around walls to Yellow → cyan pickup → green arrows to Green (+20) in 14 steps. They all end up just as smart, so why compare four? Because HOW they learned couldn't be more different: DQN finished 37% faster, and SAC made 86% fewer mistakes.">
+    <div class="hdr">
+      <div><div class="tag-sec c-gold">01 · The Hook</div><h2 class="title">Same city, same optimal route — four very different learning journeys</h2></div>
+    </div>
+    <div class="body">
+      <div class="g gw" style="flex:1;">
+        <div class="r d1 card" style="display:flex; flex-direction:column; padding:12px; border-color:rgba(250,204,21,.45);">
+          <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+            <span class="lbl c-gold">Trained-policy replay · 2×2 synchronized</span>
+            <span class="lbl c-rose"><span class="rec">●</span> LIVE ROLLOUT</span>
+          </div>
+          <div style="flex:1; min-height:0; background:#fff; border-radius:10px; display:flex; align-items:center; justify-content:center; padding:6px;">
+            <img src="assets/fig5_taxi_animation_comparison.gif" alt="4-agent rollout" style="max-width:100%; max-height:100%; object-fit:contain;" />
+          </div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          <div class="r d2 card elev" style="border-color:var(--gold);">
+            <div class="lbl c-gold">The question we set out to answer</div>
+            <p style="font-family:var(--head); font-size:21px; line-height:1.3; margin-top:8px;">“If all four agents end up driving the same perfect route, <span class="c-cyan">why did one learn 37% faster</span> and <span class="c-emerald">another make 86% fewer mistakes?</span>”</p>
+          </div>
+          <div class="r d3 card" style="flex:1;">
+            <div class="lbl c-muted" style="margin-bottom:10px;">Reading the animation</div>
+            <ul class="ls">
+              <li><b class="c-cyan">Blue trail — Stage 1:</b> empty taxi weaves around the walls toward the passenger at <b>Y (4,0)</b>.</li>
+              <li><b class="c-cyan">TAXI+P badge:</b> a valid <code>PICKUP</code> — the goal instantly changes.</li>
+              <li><b class="c-emerald">Green trail — Stage 2:</b> loaded taxi crosses Row 2 to <b>G (0,4)</b> and collects <b class="c-emerald">+20</b>.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================== 03 GRID -->
+  <section class="slide" data-ch="1" data-title="Interactive City Grid" data-spk="Sijan Pandey · Roll 11" data-time="01:30 – 02:15"
+    data-notes="DEMO: Click cell (4,0), then click 'In taxi'! Taxi-v4 is harder than a maze because every episode stitches two goals together. The taxi needs to know three things at once: its cell, passenger location, and destination. When passenger boards ('In taxi'), the state jumps and every arrow flips. Plus 6 walls and a painful -10 penalty for wrong Pickup/Dropoff.">
+    <div class="hdr">
+      <div><div class="tag-sec c-cyan">02 · The Environment</div><h2 class="title">Taxi-v4 city grid — click any cell to decode its state</h2></div>
+    </div>
+    <div class="body">
+      <div class="g gm" style="flex:1;">
+        <div class="r d1 card" style="display:flex; flex-direction:column; align-items:center; justify-content:space-between;">
+          <div style="width:100%; display:flex; justify-content:space-between; align-items:center;">
+            <span class="pill c-cyan" style="background:rgba(56,189,248,.1)">INTERACTIVE · CLICK A CELL</span>
+            <span id="s3-id" style="font-family:var(--mono); font-size:14px; font-weight:700; color:var(--gold);">State 249</span>
+          </div>
+          <div id="s3-grid" class="tg"></div>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <span class="lbl c-muted">Passenger</span>
+            <button class="btn s3p" data-p="0">R</button><button class="btn s3p" data-p="1">G</button>
+            <button class="btn s3p on" data-p="2">Y</button><button class="btn s3p" data-p="3">B</button>
+            <button class="btn s3p" data-p="4">In taxi</button>
+          </div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          <div class="r d2 card elev">
+            <div class="lbl c-cyan" style="margin-bottom:8px;">Live encoding</div>
+            <div id="s3-eq" style="font-family:var(--mono); font-size:15px; background:var(--well); border:1px solid var(--border); border-radius:9px; padding:11px 14px;"></div>
+            <div style="display:flex; gap:6px; align-items:center; margin-top:10px;">
+              <span class="lbl c-muted">Destination</span>
+              <button class="btn s3d" data-d="0">R</button><button class="btn s3d on" data-d="1">G</button>
+              <button class="btn s3d" data-d="2">Y</button><button class="btn s3d" data-d="3">B</button>
+            </div>
+          </div>
+          <div class="r d3 card top" style="--a:var(--gold); flex:1; display:flex; flex-direction:column; justify-content:center;">
+            <div class="lbl c-gold" style="margin-bottom:10px;">Why this is harder than a maze</div>
+            <ul class="ls" style="--a:var(--gold);">
+              <li><b>Two goals in one episode.</b> When <code>p</code> becomes 4, the best direction everywhere on the map flips.</li>
+              <li><b>Six orange walls.</b> East/West moves are blocked, forcing detours through the open Row 2 corridor.</li>
+              <li><b>A reward trap.</b> Each step costs <code>−1</code>, delivery pays <b class="c-emerald">+20</b>, and a wrong Pickup/Dropoff costs <b class="c-rose">−10</b>.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================== 04 RL LOOP -->
+  <section class="slide" data-ch="1" data-title="Agent–Environment Loop" data-spk="Sijan Pandey · Roll 11" data-time="02:15 – 02:45"
+    data-notes="GESTURE along arrows: How does it learn with zero if-else rules? Through this loop. Every step, the Agent checks its policy and picks action a_t. Taxi-v4 moves the car and replies with next state s_{t+1} and reward r_{t+1}. Repeat until drop-off or 200 steps—the only goal is maximizing total discounted reward.">
+    <div class="hdr">
+      <div><div class="tag-sec c-cyan">02 · Reinforcement Learning Loop</div><h2 class="title">At every time step the agent acts, and the environment answers with a next state and a reward</h2></div>
+    </div>
+    <div class="body" style="justify-content:center; gap:22px;">
+      <div style="display:grid; grid-template-columns: 1fr 1.15fr 1fr; align-items:center; gap:0; flex:1; max-height:360px;">
+        <!-- Agent Card -->
+        <div class="r d1 card elev" style="height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:12px; border-color:rgba(56,189,248,.45);">
+          <svg width="86" height="86" viewBox="0 0 64 64" fill="none">
+            <rect x="30" y="6" width="4" height="8" rx="2" fill="#38BDF8"/>
+            <circle cx="32" cy="6" r="4" fill="#38BDF8"/>
+            <rect x="12" y="16" width="40" height="34" rx="10" fill="#38BDF8"/>
+            <rect x="6" y="26" width="5" height="14" rx="2.5" fill="#38BDF8" opacity=".85"/>
+            <rect x="53" y="26" width="5" height="14" rx="2.5" fill="#38BDF8" opacity=".85"/>
+            <circle cx="24" cy="30" r="4.2" fill="#070B14"/>
+            <circle cx="40" cy="30" r="4.2" fill="#070B14"/>
+            <rect x="21" y="40" width="6" height="3.2" rx="1.6" fill="#070B14"/>
+            <rect x="29" y="40" width="6" height="3.2" rx="1.6" fill="#070B14"/>
+            <rect x="37" y="40" width="6" height="3.2" rx="1.6" fill="#070B14"/>
+          </svg>
+          <div style="font-family:var(--head); font-size:32px; font-weight:700;">Agent</div>
+          <div style="font-size:16px; color:var(--muted);">the learner: policy <span style="font-family:var(--mono); color:var(--sub);">π(a | s)</span></div>
+        </div>
+
+        <!-- Animated Interaction Arrows -->
+        <div class="r d2" style="display:flex; align-items:center; justify-content:center; padding:0 8px;">
+          <svg viewBox="0 0 380 280" style="width:100%; height:280px; overflow:visible;">
+            <defs>
+              <marker id="ar-c" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 1 L10 5 L0 9 z" fill="#38BDF8"/></marker>
+              <marker id="ar-g" viewBox="0 0 10 10" refX="2" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10 1 L0 5 L10 9 z" fill="#FACC15"/></marker>
+              <marker id="ar-e" viewBox="0 0 10 10" refX="2" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10 1 L0 5 L10 9 z" fill="#34D399"/></marker>
+            </defs>
+
+            <!-- Action a_t (Left -> Right) -->
+            <text x="190" y="46" fill="#38BDF8" font-family="Space Grotesk, sans-serif" font-size="20" font-weight="700" text-anchor="middle">action a<tspan dy="4" font-size="14">t</tspan></text>
+            <line x1="18" y1="68" x2="358" y2="68" stroke="#38BDF8" stroke-width="4" marker-end="url(#ar-c)" opacity=".88"/>
+            <line x1="18" y1="68" x2="350" y2="68" stroke="#E0F2FE" stroke-width="4" class="pulse-r"/>
+
+            <!-- Next State s_{t+1} (Right -> Left) -->
+            <text x="190" y="148" fill="#FACC15" font-family="Space Grotesk, sans-serif" font-size="20" font-weight="700" text-anchor="middle">next state s<tspan dy="4" font-size="14">t+1</tspan></text>
+            <line x1="22" y1="170" x2="362" y2="170" stroke="#FACC15" stroke-width="4" marker-start="url(#ar-g)" opacity=".88"/>
+            <line x1="30" y1="170" x2="362" y2="170" stroke="#FEF9C3" stroke-width="4" class="pulse-l"/>
+
+            <!-- Reward r_{t+1} (Right -> Left) -->
+            <text x="190" y="218" fill="#34D399" font-family="Space Grotesk, sans-serif" font-size="20" font-weight="700" text-anchor="middle">reward r<tspan dy="4" font-size="14">t+1</tspan></text>
+            <line x1="22" y1="240" x2="362" y2="240" stroke="#34D399" stroke-width="4" marker-start="url(#ar-e)" opacity=".88"/>
+            <line x1="30" y1="240" x2="362" y2="240" stroke="#D1FAE5" stroke-width="4" class="pulse-l"/>
+          </svg>
+        </div>
+
+        <!-- Environment Card -->
+        <div class="r d3 card elev" style="height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:12px; border-color:rgba(45,212,191,.45);">
+          <svg width="86" height="86" viewBox="0 0 64 64" fill="none">
+            <circle cx="32" cy="32" r="25" fill="#2DD4BF"/>
+            <path d="M22 12 C18 18, 25 22, 23 29 C21 34, 15 35, 16 42 C18 48, 25 53, 30 51 C33 47, 29 41, 33 36 C37 31, 45 34, 48 28 C51 22, 46 15, 39 12 C34 14, 28 10, 22 12 Z" fill="#070B14" opacity=".82"/>
+            <path d="M41 39 C38 42, 40 48, 45 48 C50 47, 53 42, 51 38 C48 36, 43 37, 41 39 Z" fill="#070B14" opacity=".82"/>
+          </svg>
+          <div style="font-family:var(--head); font-size:32px; font-weight:700;">Environment</div>
+          <div style="font-size:16px; color:var(--muted);">Taxi-v4: grid, walls, rewards</div>
+        </div>
+      </div>
+
+      <!-- Bottom Goal Callout -->
+      <div class="r d4 card elev" style="padding:20px 26px; border-color:rgba(56,189,248,.35);">
+        <p style="font-size:18px; line-height:1.55; color:var(--text);">
+          The loop repeats until a correct drop-off ends the episode, or <b class="c-gold">200 steps</b> pass. The agent's goal: <b class="c-emerald">maximise the total (discounted) reward</b>.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================== 05 FIVE INGREDIENTS -->
+  <section class="slide" data-ch="1" data-title="MDP Five Ingredients" data-spk="Sijan Pandey · Roll 11" data-time="02:45 – 03:15"
+    data-notes="SWEEP LEFT→RIGHT: An MDP sounds scary, but it's just 5 simple ingredients: S = 500 situations, A = 6 buttons, P = deterministic physics, R = -1 / -10 / +20 rewards, and gamma = 0.95 future weight. The Markov property just means the taxi only needs what's happening RIGHT NOW—never its past history.">
+    <div class="hdr">
+      <div><div class="tag-sec c-cyan">02 · MDP Overview</div><h2 class="title">Formally, Taxi-v4 is a Markov decision process with five ingredients: (S, A, P, R, γ)</h2></div>
+    </div>
+    <div class="body" style="justify-content:space-between; gap:18px;">
+      <div class="g g5" style="flex:1; max-height:365px; gap:14px;">
+        <div class="r d1 mdp-col" style="--a:#38BDF8;">
+          <div class="mdp-sym">S</div>
+          <div>
+            <div style="font-family:var(--head); font-size:21px; font-weight:700;">States</div>
+            <p style="font-size:13.5px; color:var(--muted); margin-top:8px; line-height:1.45;">where taxi, passenger and destination are</p>
+          </div>
+          <div style="font-family:var(--mono); font-size:21px; font-weight:700; color:#38BDF8;">500</div>
+        </div>
+
+        <div class="r d2 mdp-col" style="--a:#FACC15;">
+          <div class="mdp-sym">A</div>
+          <div>
+            <div style="font-family:var(--head); font-size:21px; font-weight:700;">Actions</div>
+            <p style="font-size:13.5px; color:var(--muted); margin-top:8px; line-height:1.45;">what the taxi can do</p>
+          </div>
+          <div style="font-family:var(--mono); font-size:21px; font-weight:700; color:#FACC15;">6</div>
+        </div>
+
+        <div class="r d3 mdp-col" style="--a:#2DD4BF;">
+          <div class="mdp-sym">P</div>
+          <div>
+            <div style="font-family:var(--head); font-size:21px; font-weight:700;">Transitions</div>
+            <p style="font-size:13.5px; color:var(--muted); margin-top:8px; line-height:1.45;">how the world responds to an action</p>
+          </div>
+          <div style="font-family:var(--mono); font-size:19px; font-weight:700; color:#2DD4BF;">deterministic</div>
+        </div>
+
+        <div class="r d4 mdp-col" style="--a:#34D399;">
+          <div class="mdp-sym">R</div>
+          <div>
+            <div style="font-family:var(--head); font-size:21px; font-weight:700;">Rewards</div>
+            <p style="font-size:13.5px; color:var(--muted); margin-top:8px; line-height:1.45;">what each step costs or earns</p>
+          </div>
+          <div style="font-family:var(--mono); font-size:19px; font-weight:700; color:#34D399;">−1 / −10 / +20</div>
+        </div>
+
+        <div class="r d5 mdp-col" style="--a:#F472B6;">
+          <div class="mdp-sym">γ</div>
+          <div>
+            <div style="font-family:var(--head); font-size:21px; font-weight:700;">Discount</div>
+            <p style="font-size:13.5px; color:var(--muted); margin-top:8px; line-height:1.45;">how much future reward counts</p>
+          </div>
+          <div style="font-family:var(--mono); font-size:21px; font-weight:700; color:#F472B6;">0.95</div>
+        </div>
+      </div>
+
+      <div class="r d5" style="padding:4px 4px 0;">
+        <p style="font-size:16.5px; line-height:1.5; color:var(--text);">
+          <b class="c-cyan">Markov property:</b> the next state and reward depend only on the current state and action, not on the history.
+        </p>
+        <div style="font-size:13px; color:var(--muted); margin-top:6px;">
+          Notation follows Sutton &amp; Barto (2018). The next slide unpacks the exact state encoding and action–reward specification.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================== 06 MDP DETAILS -->
+  <section class="slide" data-ch="1" data-title="MDP Formulation" data-spk="Sijan Pandey · Roll 11" data-time="03:15 – 04:00"
+    data-notes="Where does 500 come from? 25 grid cells × 5 passenger spots × 4 destinations = 500 integers (0–499). With gamma = 0.95 over 13 steps, 0.95^13 ≈ 0.51—so the taxi still feels half of that +20 reward from the very start! On the right: -1 per move stops wandering, +20 is the payday, -10 punishes spamming Pickup/Dropoff.">
+    <div class="hdr">
+      <div><div class="tag-sec c-cyan">02 · The Maths</div><h2 class="title">Markov Decision Process: (S, A, P, R, γ)</h2></div>
+    </div>
+    <div class="body">
+      <div class="g g2" style="flex:1;">
+        <div class="r d1 card" style="display:flex; flex-direction:column; gap:12px;">
+          <span class="pill c-cyan" style="align-self:flex-start; background:rgba(56,189,248,.1)">STATE SPACE · |S| = 500</span>
+          <div class="eq" style="border-color:rgba(56,189,248,.45);"><img src="assets/dark_eq_state.png" alt="state encoding" /></div>
+          <ul class="ls">
+            <li><b>Taxi position (r, c):</b> 5 × 5 = 25 intersections.</li>
+            <li><b>Passenger (p):</b> waiting at R / G / Y / B, or <code>4</code> = inside the taxi.</li>
+            <li><b>Destination (d):</b> one of 4 stations.</li>
+            <li><b>Transitions (P):</b> deterministic, read from Gymnasium's <code>env.unwrapped.P</code>.</li>
+            <li><b>Discount γ = 0.95:</b> <code>0.95¹³ ≈ 0.51</code> — half the +20 survives the trip back.</li>
+          </ul>
+        </div>
+        <div class="r d2 card" style="display:flex; flex-direction:column; gap:12px;">
+          <span class="pill c-emerald" style="align-self:flex-start; background:rgba(52,211,153,.1)">ACTIONS · |A| = 6 &amp; REWARDS</span>
+          <table class="t">
+            <thead><tr><th>ID</th><th>Action</th><th>Effect</th><th style="text-align:right">Reward</th></tr></thead>
+            <tbody>
+              <tr><td>0</td><td><b>South ↓</b></td><td>(r+1, c)</td><td style="text-align:right">−1</td></tr>
+              <tr><td>1</td><td><b>North ↑</b></td><td>(r−1, c)</td><td style="text-align:right">−1</td></tr>
+              <tr><td>2</td><td><b>East →</b></td><td>(r, c+1) unless walled</td><td style="text-align:right">−1</td></tr>
+              <tr><td>3</td><td><b>West ←</b></td><td>(r, c−1) unless walled</td><td style="text-align:right">−1</td></tr>
+              <tr><td>4</td><td><b>Pickup</b></td><td>p → 4 at passenger</td><td style="text-align:right"><b class="c-rose">−1 / −10</b></td></tr>
+              <tr><td>5</td><td><b>Dropoff</b></td><td>ends episode at d</td><td style="text-align:right"><b class="c-emerald">+20</b> / <b class="c-rose">−10</b></td></tr>
+            </tbody>
+          </table>
+          <div style="margin-top:auto; font-family:var(--mono); font-size:11.5px; background:var(--well); border:1px solid var(--border); border-radius:9px; padding:10px 12px;">
+            <span class="c-muted">reward stream ›</span> −1 −1 −1 … <b class="c-gold">pickup</b> −1 −1 … <b class="c-emerald">+20 ✔</b>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================== 05 ABLATION -->
+  <section class="slide" data-ch="1" data-title="Controlled Ablation" data-spk="Sijan Pandey · Roll 11" data-time="04:00 – 04:45"
+    data-notes="RACECAR ANALOGY: Why pure NumPy instead of giant PyTorch networks? Like testing four racecar drivers: give them different engines and you don't know if the driver or the engine won. Giving all 4 agents the exact same clean NumPy setup isolates Replay vs Clipping vs Entropy fairly. 2,500 train eps (seed=42), 500 unseen greedy test eps, plus 36 sweeps.">
+    <div class="hdr">
+      <div><div class="tag-sec c-gold">03 · Experimental Design</div><h2 class="title">A fair fight: one environment, one budget, four mechanisms</h2></div>
+    </div>
+    <div class="body">
+      <div class="r d1 card elev" style="border-color:var(--gold);">
+        <span class="pill c-gold" style="background:rgba(250,204,21,.1)">WHY PURE NUMPY?</span>
+        <p style="font-size:15.5px; line-height:1.6; margin-top:10px; color:var(--text);">
+          Wrapping a 500-state problem in deep networks mostly measures optimizer luck. Implementing all four agents from scratch with <b>exact / one-hot state representations</b> makes this a <b class="c-gold">controlled ablation</b>: any difference comes from <b class="c-cyan">replay + target sync</b>, <b class="c-violet">clipped policy updates</b> or <b class="c-emerald">max-entropy twin critics</b> — nothing else.
+        </p>
+      </div>
+      <div class="g g4" style="flex:1;">
+        <div class="r d2 card top" style="--a:var(--cyan);"><div style="font-family:var(--mono); font-size:36px; font-weight:700; color:var(--cyan);">2,500</div><div style="font-weight:700; margin-top:6px;">Training episodes</div><p style="font-size:12.8px; color:var(--sub); margin-top:6px; line-height:1.5;">≤ 200 steps each, identical valid starts, <code>seed=42</code>.</p></div>
+        <div class="r d3 card top" style="--a:var(--emerald);"><div style="font-family:var(--mono); font-size:36px; font-weight:700; color:var(--emerald);">500</div><div style="font-weight:700; margin-top:6px;">Greedy test episodes</div><p style="font-size:12.8px; color:var(--sub); margin-top:6px; line-height:1.5;">No exploration (<code>ε=0</code>), unseen starts (<code>seed=999</code>).</p></div>
+        <div class="r d4 card top" style="--a:var(--violet);"><div style="font-family:var(--mono); font-size:36px; font-weight:700; color:var(--violet);">4</div><div style="font-weight:700; margin-top:6px;">Metrics</div><p style="font-size:12.8px; color:var(--sub); margin-top:6px; line-height:1.5;">Return, steps, total −10 penalties, episodes to reach +5.0.</p></div>
+        <div class="r d5 card top" style="--a:var(--gold);"><div style="font-family:var(--mono); font-size:36px; font-weight:700; color:var(--gold);">12×3</div><div style="font-weight:700; margin-top:6px;">Sensitivity runs</div><p style="font-size:12.8px; color:var(--sub); margin-top:6px; line-height:1.5;">12 settings of α, γ, ε, each averaged over 3 seeds.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================== 06 CODE -->
+  <section class="slide" data-ch="1" data-title="Inside the Code" data-spk="Sijan Pandey · Roll 11" data-time="04:45 – 05:30"
+    data-notes="POINT TO EACH BOX (don't read syntax!): Real code straight from our GitHub notebook—each agent's personality in 3 lines! SARSA updates using the move it actually took; DQN replays 32 past memories against a target synced every 150 steps; PPO skips updates outside [0.8, 1.2]; SAC picks the cautious min of two Q-tables plus entropy. Hand off to Ashim!">
+    <div class="hdr">
+      <div><div class="tag-sec" style="color:var(--text)">03 · Inside the Code (from our GitHub notebook)</div><h2 class="title">Each algorithm's identity fits in three lines of NumPy</h2></div>
+    </div>
+    <div class="body">
+      <div class="g g2" style="flex:1; grid-template-rows:1fr 1fr;">
+        <div class="r d1 card top" style="--a:var(--gold); display:flex; flex-direction:column; gap:8px;">
+          <div style="display:flex; justify-content:space-between;"><b class="c-gold">SARSA · cell 5</b><span class="lbl c-muted" style="text-transform:none">α=0.25 · ε×0.996</span></div>
+          <pre class="code"><span class="cm"># bootstrap on the action we will actually take</span>
+a_next = <span class="f">select_action</span>(s_next, epsilon)
+td_target = reward + gamma * Q[s_next, a_next]
+Q[s, a] += alpha * (td_target - Q[s, a])</pre>
+        </div>
+        <div class="r d2 card top" style="--a:var(--cyan); display:flex; flex-direction:column; gap:8px;">
+          <div style="display:flex; justify-content:space-between;"><b class="c-cyan">DQN · cell 7</b><span class="lbl c-muted" style="text-transform:none">buffer 12k · batch 32 · sync 150</span></div>
+          <pre class="code"><span class="cm"># replay a random mini-batch against a frozen target</span>
+targets = b_r + gamma * (<span class="n">1</span> - b_d) * W_target[b_s2].<span class="f">max</span>(<span class="n">1</span>)
+np.<span class="f">add.at</span>(W_online, (b_s, b_a), <span class="n">0.15</span>*lr*(targets - W_online[b_s, b_a]))
+<span class="k">if</span> total_steps % <span class="n">150</span> == <span class="n">0</span>: W_target[:] = W_online</pre>
+        </div>
+        <div class="r d3 card top" style="--a:var(--violet); display:flex; flex-direction:column; gap:8px;">
+          <div style="display:flex; justify-content:space-between;"><b class="c-violet">PPO · cell 9</b><span class="lbl c-muted" style="text-transform:none">clip ε=0.20 · 3 epochs</span></div>
+          <pre class="code"><span class="cm"># ignore updates that push the ratio outside [0.8, 1.2]</span>
+ratio = curr_probs[a_t] / old_p
+clipped = (adv &gt; <span class="n">0</span> <span class="k">and</span> ratio &gt; <span class="n">1.2</span>) <span class="k">or</span> (adv &lt; <span class="n">0</span> <span class="k">and</span> ratio &lt; <span class="n">0.8</span>)
+<span class="k">if not</span> clipped: logits[s_t] += actor_lr * (adv*grad + c_ent*ent)</pre>
+        </div>
+        <div class="r d4 card top" style="--a:var(--emerald); display:flex; flex-direction:column; gap:8px;">
+          <div style="display:flex; justify-content:space-between;"><b class="c-emerald">Discrete SAC · cell 11</b><span class="lbl c-muted" style="text-transform:none">τ: 1.2 → 0.08 · Q₁, Q₂</span></div>
+          <pre class="code"><span class="cm"># soft value over the pessimistic twin critic</span>
+q_min  = np.<span class="f">minimum</span>(Q1[s_next], Q2[s_next])
+v_soft = np.<span class="f">sum</span>(pi * (q_min - tau * np.<span class="f">log</span>(pi)))
+Q1[s, a] += lr * (reward + gamma * v_soft - Q1[s, a])</pre>
+        </div>
+      </div>
+      <div class="r d5" style="display:flex; justify-content:space-between; font-family:var(--mono); font-size:11.5px;">
+        <span class="c-muted">Source: Taxi_Pickup_Dropoff_RL_Comparison.ipynb · no deep-learning framework required</span>
+        <b class="c-violet">Next → Chapter 2 · The Four Agents</b>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================== 07 SARSA -->
+  <section class="slide" data-ch="2" data-title="SARSA" data-spk="Ashim Shrestha · Roll 22" data-time="05:30 – 06:20"
+    data-notes="Thanks Sijan. I'm Ashim Shrestha, Roll No. 22. SARSA is on-policy TD(0): it updates with the action it actually takes next, including random exploratory ones. One cell per step means slow credit flow (944 episodes) and uniform exploration means 10,908 illegal penalties — but it still ends at 100% optimal.">
+    <div class="hdr">
+      <div><div class="tag-sec c-gold">04 · Agent 01</div><h2 class="title">SARSA — learns from the move it actually makes</h2></div>
+    </div>
+    <div class="body">
+      <div class="r d1 eq" style="border-color:rgba(250,204,21,.5);"><img src="assets/dark_eq_sarsa.png" alt="SARSA" /></div>
+      <div class="g gw" style="flex:1;">
+        <div class="r d2 card" style="display:flex; flex-direction:column; justify-content:center;">
+          <div class="lbl c-gold" style="margin-bottom:12px;">How it behaves on Taxi-v4</div>
+          <ul class="ls" style="--a:var(--gold);">
+            <li><b>On-policy and cautious.</b> It bootstraps on the real next action <code>A′</code>, so its values include the cost of its own random exploration.</li>
+            <li><b>One step of credit per update.</b> The +20 only creeps back one cell at a time — hundreds of episodes to reach the start.</li>
+            <li><b>Blind exploration hurts.</b> Uniform ε-greedy picks an illegal Pickup/Dropoff about <code>ε/3</code> of the time → <b class="c-rose">10,908</b> penalties.</li>
+            <li><b>But it gets there.</b> Once ε decays to 0.01 it drives the exact optimal policy: <b class="c-emerald">+7.01, 100%</b>.</li>
+          </ul>
+        </div>
+        <div class="r d3 card elev">
+          <div class="lbl c-muted" style="margin-bottom:8px;">Run card</div>
+          <table class="t">
+            <tr><td class="c-muted">Learning rate α</td><td style="text-align:right"><b>0.25</b></td></tr>
+            <tr><td class="c-muted">Discount γ</td><td style="text-align:right"><b>0.95</b></td></tr>
+            <tr><td class="c-muted">Exploration ε</td><td style="text-align:right"><b>1.0 → 0.01</b></td></tr>
+            <tr><td class="c-muted">Episodes to +5.0</td><td style="text-align:right"><b class="c-gold">944</b></td></tr>
+            <tr><td class="c-muted">Illegal −10 moves</td><td style="text-align:right"><b class="c-rose">10,908 · worst</b></td></tr>
+            <tr><td class="c-muted">Greedy test</td><td style="text-align:right"><b class="c-emerald">+7.01 · 100%</b></td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================== 08 DQN -->
+  <section class="slide" data-ch="2" data-title="DQN + Replay Demo" data-spk="Ashim Shrestha · Roll 22" data-time="06:20 – 07:20"
+    data-notes="DEMO: press 'Run update cycle' three times. SARSA moves the +20 back one cell per cycle; replay re-samples the stored path so DQN moves it about two cells per cycle. That's why DQN reaches +5.0 in 596 episodes — 37% faster. Weakness: still epsilon-greedy, 7,192 illegal moves.">
+    <div class="hdr">
+      <div><div class="tag-sec c-cyan">04 · Agent 02</div><h2 class="title">DQN — remembers the past and replays it</h2></div>
+    </div>
+    <div class="body">
+      <div class="r d1 eq" style="border-color:rgba(56,189,248,.5);"><img src="assets/dark_eq_dqn.png" alt="DQN loss" /></div>
+      <div class="g g2" style="flex:1;">
+        <div class="r d2 card" style="display:flex; flex-direction:column; justify-content:space-between;">
+          <ul class="ls">
+            <li><b>Replay buffer (12,000).</b> Every transition is stored; random 32-sample mini-batches are replayed every 4 steps, breaking correlation.</li>
+            <li><b>Target network (sync every 150 steps).</b> Bootstrap targets stay still long enough to learn from.</li>
+            <li><b>Result: 596 episodes to +5.0</b> — the fastest of all four, <b class="c-cyan">37% faster</b> than SARSA.</li>
+            <li><b>Still ε-greedy.</b> It keeps making random illegal moves early: <b class="c-rose">7,192</b>.</li>
+          </ul>
+          <div style="display:flex; gap:8px;"><span class="pill c-cyan">lr 0.30</span><span class="pill c-muted">buffer 12k</span><span class="pill c-emerald">★ fastest</span></div>
+        </div>
+        <div class="r d3 card elev" style="display:flex; flex-direction:column; justify-content:space-between;">
+          <div style="display:flex; justify-content:space-between;"><span class="lbl c-cyan">Demo · how far does +20 travel back?</span><span id="prop-lbl" class="lbl c-muted">cycle 0</span></div>
+          <div>
+            <div class="lbl c-gold" style="margin-bottom:6px;">SARSA · one online step per cycle</div>
+            <div id="prop-s" style="display:grid; grid-template-columns:repeat(6,1fr); gap:6px;"></div>
+          </div>
+          <div>
+            <div class="lbl c-cyan" style="margin-bottom:6px;">DQN · replay re-samples the stored path</div>
+            <div id="prop-d" style="display:grid; grid-template-columns:repeat(6,1fr); gap:6px;"></div>
+          </div>
+          <div style="display:flex; gap:8px;"><button id="prop-go" class="btn on">+ Run update cycle</button><button id="prop-rs" class="btn">Reset</button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================== 09 PPO -->
+  <section class="slide" data-ch="2" data-title="PPO + Clip Curve" data-spk="Ashim Shrestha · Roll 22" data-time="07:20 – 08:20"
+    data-notes="DEMO: toggle A>0 / A<0, drag epsilon. PPO learns a softmax policy directly with a critic for the advantage. The clip flattens the objective outside [0.8,1.2], so one noisy episode can't wreck a good route. 67% fewer penalties than SARSA, but on-policy: 1,023 episodes, 99.6% success.">
+    <div class="hdr">
+      <div><div class="tag-sec c-violet">05 · Agent 03</div><h2 class="title">PPO — improves the policy, but never too much at once</h2></div>
+    </div>
+    <div class="body">
+      <div class="r d1 eq" style="border-color:rgba(167,139,250,.5);"><img src="assets/dark_eq_ppo.png" alt="PPO" /></div>
+      <div class="g g2" style="flex:1;">
+        <div class="r d2 card" style="display:flex; flex-direction:column; justify-content:space-between;">
+          <ul class="ls" style="--a:var(--violet);">
+            <li><b>Actor + critic.</b> A softmax actor outputs <code>π(a|s)</code>; the critic scores each move with advantage <code>A = Q − V</code>.</li>
+            <li><b>The clip.</b> If the new/old probability ratio leaves <code>[0.8, 1.2]</code> the update is skipped — 3 epochs per episode.</li>
+            <li><b>Safer than ε-greedy.</b> The softmax quickly stops choosing −10 moves: <b>3,606</b> penalties (−67% vs SARSA).</li>
+            <li><b>Price of being on-policy.</b> Old episodes are thrown away → <b>1,023 episodes</b>; <b>99.6%</b> greedy success.</li>
+          </ul>
+          <div style="display:flex; gap:8px;"><span class="pill c-violet">actor lr 0.35</span><span class="pill c-muted">critic lr 0.30</span><span class="pill c-muted">entropy 0.015</span></div>
+        </div>
+        <div class="r d3 card elev" style="display:flex; flex-direction:column; gap:8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span class="lbl c-violet">Interactive trust region</span>
+            <div style="display:flex; gap:6px;"><button id="ppo-p" class="btn on">A &gt; 0</button><button id="ppo-n" class="btn">A &lt; 0</button></div>
+          </div>
+          <svg id="ppo-svg" viewBox="0 0 460 210" style="width:100%; flex:1; background:var(--well); border:1px solid var(--border); border-radius:9px;"></svg>
+          <div style="display:flex; align-items:center; gap:10px; font-family:var(--mono); font-size:12px;">
+            <span>clip ε = <b id="ppo-ev" class="c-gold">0.20</b></span>
+            <input id="ppo-er" type="range" min="0.05" max="0.40" step="0.05" value="0.20" style="flex:1; accent-color:var(--violet);" />
+            <span class="c-muted">[<span id="ppo-lo">0.80</span>, <span id="ppo-hi">1.20</span>]</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================== 10 SAC -->
+  <section class="slide" data-ch="2" data-title="SAC + τ Lab" data-spk="Ashim Shrestha · Roll 22" data-time="08:20 – 09:20"
+    data-notes="SHOWSTOPPER: drag tau slowly. Left: epsilon-greedy keeps picking the red -10 actions 10% of the time no matter what it has learned. Right: SAC's Boltzmann policy uses exp(Q/tau), so once a move is worth -10 its probability collapses to ~0. That's the 86% penalty reduction.">
+    <div class="hdr">
+      <div><div class="tag-sec c-emerald">05 · Agent 04</div><h2 class="title">Discrete SAC — explores curiously, but never stupidly</h2></div>
+    </div>
+    <div class="body">
+      <div class="g g2" style="flex:1;">
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          <div class="r d1 eq" style="flex-direction:column; border-color:rgba(52,211,153,.5);">
+            <img src="assets/dark_eq_sac_v.png" alt="soft value" style="max-height:46px;" />
+            <img src="assets/dark_eq_sac_pi.png" alt="boltzmann policy" style="max-height:58px;" />
+          </div>
+          <div class="r d2 card" style="flex:1; display:flex; flex-direction:column; justify-content:center;">
+            <ul class="ls" style="--a:var(--emerald);">
+              <li><b>Twin critics.</b> Bootstraps on <code>min(Q₁, Q₂)</code> to avoid over-optimistic values.</li>
+              <li><b>Entropy bonus.</b> Rewards keeping options open; temperature τ anneals 1.2 → 0.08.</li>
+              <li><b>The key effect.</b> A move worth −10 gets weight <code>e^(−10/τ) ≈ 0</code> — exploration stays among sensible moves. Only <b class="c-emerald">1,486</b> penalties.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="r d3 card elev" style="display:flex; flex-direction:column; gap:10px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span class="lbl c-emerald">Live lab · drag the temperature</span>
+            <span id="sac-ill" class="pill c-emerald">SAC illegal 0.004%</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; font-family:var(--mono); font-size:12px;">
+            <span>τ = <b id="tau-v" class="c-gold">1.00</b></span>
+            <input id="tau-r" type="range" min="0.10" max="2.50" step="0.05" value="1.00" style="flex:1; accent-color:var(--emerald);" />
+            <span class="c-muted">vs ε = 0.30</span>
+          </div>
+          <div id="sac-lab" style="flex:1; display:grid; grid-template-columns:1fr 1fr; gap:10px;"></div>
+          <div style="font-size:12px; color:var(--emerald); background:rgba(52,211,153,.1); border:1px solid rgba(52,211,153,.5); border-radius:8px; padding:8px 11px; font-weight:600;">ε-greedy wastes 10% of moves on known −10 mistakes. SAC wastes almost none.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================== 11 QUADRANT -->
+  <section class="slide" data-ch="2" data-title="The RL Map" data-spk="Ashim Shrestha · Roll 22" data-time="09:20 – 09:55"
+    data-notes="Our four agents cover the whole RL map: on/off-policy across, value-based/actor-critic down. Two clean patterns: off-policy (right column) learned faster; probability-based exploration (bottom row) made far fewer mistakes.">
+    <div class="hdr">
+      <div><div class="tag-sec" style="color:var(--text)">05 · The Big Picture</div><h2 class="title">Four agents, one map of reinforcement learning</h2></div>
+    </div>
+    <div class="body" style="flex-direction:row; gap:16px;">
+      <div style="display:flex; flex-direction:column; justify-content:space-around; width:26px;">
+        <span class="lbl c-muted" style="writing-mode:vertical-rl; transform:rotate(180deg);">VALUE-BASED</span>
+        <span class="lbl c-muted" style="writing-mode:vertical-rl; transform:rotate(180deg);">ACTOR-CRITIC</span>
+      </div>
+      <div style="flex:1; display:flex; flex-direction:column; gap:8px;">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;"><span class="lbl c-muted" style="text-align:center;">ON-POLICY · learns from its current behaviour</span><span class="lbl c-muted" style="text-align:center;">OFF-POLICY · learns from any stored experience</span></div>
+        <div class="quad" style="flex:1;">
+          <div class="r d1 qcell" style="border-color:rgba(250,204,21,.55);">
+            <div style="display:flex; justify-content:space-between;"><b style="font-family:var(--head); font-size:24px;" class="c-gold">SARSA</b><span class="pill c-gold">944 eps · 10,908 −10</span></div>
+            <span style="font-size:13.5px; color:var(--sub);">1-step TD on the action actually taken. Uniform ε-greedy. The honest, simple baseline.</span>
+          </div>
+          <div class="r d2 qcell" style="border-color:rgba(56,189,248,.55); box-shadow:0 0 30px -12px var(--cyan);">
+            <div style="display:flex; justify-content:space-between;"><b style="font-family:var(--head); font-size:24px;" class="c-cyan">DQN</b><span class="pill c-cyan">★ 596 eps · 7,192 −10</span></div>
+            <span style="font-size:13.5px; color:var(--sub);">Replay buffer + target net. Uniform ε-greedy. Fastest learner.</span>
+          </div>
+          <div class="r d3 qcell" style="border-color:rgba(167,139,250,.55);">
+            <div style="display:flex; justify-content:space-between;"><b style="font-family:var(--head); font-size:24px;" class="c-violet">PPO</b><span class="pill c-violet">1,023 eps · 3,606 −10</span></div>
+            <span style="font-size:13.5px; color:var(--sub);">Clipped surrogate actor-critic. Softmax exploration. Stable and steady.</span>
+          </div>
+          <div class="r d4 qcell" style="border-color:rgba(52,211,153,.55); box-shadow:0 0 30px -12px var(--emerald);">
+            <div style="display:flex; justify-content:space-between;"><b style="font-family:var(--head); font-size:24px;" class="c-emerald">Discrete SAC</b><span class="pill c-emerald">808 eps · ★ 1,486 −10</span></div>
+            <span style="font-size:13.5px; color:var(--sub);">Soft Bellman + twin critics. Boltzmann exploration. Safest learner.</span>
+          </div>
+        </div>
+        <div class="r d5 g g2" style="gap:12px;">
+          <div class="card" style="padding:10px 14px; font-size:13px; color:var(--sub);"><b class="c-cyan">→ Right column is faster:</b> off-policy DQN (596) &amp; SAC (808) beat on-policy SARSA (944) &amp; PPO (1,023).</div>
+          <div class="card" style="padding:10px 14px; font-size:13px; color:var(--sub);"><b class="c-emerald">↓ Bottom row is safer:</b> softmax/Boltzmann SAC (1,486) &amp; PPO (3,606) beat ε-greedy DQN &amp; SARSA.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================== 12 SIMULATOR -->
+  <section class="slide" data-ch="2" data-title="Live Taxi Simulator" data-spk="Ashim → Nishan" data-time="09:55 – 10:45"
+    data-notes="DEMO: press 'Illegal move' once to show -10. Reset. Then Auto-drive with V*(s) on: blue values guide the empty taxi to Y; the moment it picks up, the whole grid turns green and points toward G (+20). Hand over to Nishan.">
+    <div class="hdr">
+      <div><div class="tag-sec c-emerald">05 · Live Demo</div><h2 class="title">Drive it yourself — watch the value map flip at pickup</h2></div>
+    </div>
+    <div class="body">
+      <div class="g gm" style="flex:1;">
+        <div class="r d1 card" style="display:flex; flex-direction:column; align-items:center; justify-content:space-between;">
+          <div style="width:100%; display:flex; justify-content:space-between; align-items:center;">
+            <span id="sim-st" class="pill c-cyan">STAGE 1 · TO PASSENGER</span>
+            <span id="sim-hud" style="font-family:var(--mono); font-size:12.5px; font-weight:700; color:var(--gold);">steps 0 · return 0</span>
+          </div>
+          <div id="sim-grid" class="tg"></div>
+          <div style="display:flex; gap:7px;">
+            <button id="sim-play" class="btn go">▶ Auto-drive</button>
+            <button id="sim-step" class="btn">Step</button>
+            <button id="sim-bad" class="btn bad">Illegal move −10</button>
+            <button id="sim-rst" class="btn">↺</button>
+            <button id="sim-hm" class="btn on">V*(s)</button>
+          </div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          <div class="r d2 card elev">
+            <div class="lbl c-muted" style="margin-bottom:8px;">Mission (exact optimal policy, all 500 states)</div>
+            <div style="display:flex; flex-direction:column; gap:8px; font-family:var(--mono); font-size:11.5px;">
+              <div style="display:flex; gap:6px; align-items:center;"><span style="width:84px;" class="c-muted">PASSENGER</span>
+                <button class="btn sp" data-p="0">R</button><button class="btn sp" data-p="1">G</button><button class="btn sp on" data-p="2">Y</button><button class="btn sp" data-p="3">B</button></div>
+              <div style="display:flex; gap:6px; align-items:center;"><span style="width:84px;" class="c-muted">DESTINATION</span>
+                <button class="btn sd" data-d="0">R</button><button class="btn sd on" data-d="1">G</button><button class="btn sd" data-d="2">Y</button><button class="btn sd" data-d="3">B</button></div>
+            </div>
+            <div style="font-size:11.5px; color:var(--muted); margin-top:8px;">Click any cell to move the taxi's starting point.</div>
+          </div>
+          <div class="r d3 card" style="flex:1; display:flex; flex-direction:column; gap:8px;">
+            <div class="lbl c-emerald">Trip log</div>
+            <div id="sim-log" style="flex:1; font-family:var(--mono); font-size:11.8px; color:var(--sub); background:var(--well); border:1px solid var(--border); border-radius:9px; padding:10px 12px; overflow-y:auto; line-height:1.6; min-height:0;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================== 13 LEARNING RACE -->
+  <section class="slide" data-ch="3" data-title="The Learning Race" data-spk="Nishan · Roll 5" data-time="10:45 – 11:55"
+    data-notes="I'm Nishan. Press Play — this replays our REAL 60-episode moving-average training curves. Watch cyan DQN pull away first and cross +5.0 at episode 596. Switch to 'Penalties' and replay: green SAC drops to zero almost immediately. These are the same numbers as fig2 in the repo.">
+    <div class="hdr">
+      <div><div class="tag-sec c-emerald">06 · The Learning Race</div><h2 class="title">Replaying 2,500 real training episodes — who learns first?</h2></div>
+    </div>
+    <div class="body">
+      <div class="g" style="grid-template-columns:1.65fr 1fr; flex:1;">
+        <div class="r d1 card" style="display:flex; flex-direction:column; gap:10px; padding:14px 16px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; gap:6px;">
+              <button class="btn rm on" data-m="rewards">Return</button>
+              <button class="btn rm" data-m="steps">Steps</button>
+              <button class="btn rm" data-m="illegal">Penalties</button>
+            </div>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <button id="race-play" class="btn go">▶ Play race</button>
+              <span id="race-ep" style="font-family:var(--mono); font-size:13px; font-weight:700; color:var(--gold); min-width:110px; text-align:right;">episode 0</span>
+            </div>
+          </div>
+          <canvas id="race" width="1440" height="740" style="width:100%; flex:1; min-height:0; background:var(--well); border:1px solid var(--border); border-radius:10px;"></canvas>
+          <input id="race-scrub" type="range" min="0" max="249" value="249" style="width:100%; accent-color:var(--gold);" />
+        </div>
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          <div class="r d2 card elev" style="padding:14px 16px;">
+            <div class="lbl c-muted" style="margin-bottom:8px;">Live standings <span id="race-unit" class="c-muted"></span></div>
+            <div id="race-board" style="display:flex; flex-direction:column; gap:7px;"></div>
+          </div>
+          <div class="r d3 card top" style="--a:var(--gold); flex:1; padding:14px 16px;">
+            <div class="lbl c-gold" style="margin-bottom:8px;">Milestones · first to +5.0 return</div>
+            <div id="race-ms" style="display:flex; flex-direction:column; gap:7px; font-family:var(--mono); font-size:12.5px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================== 14 LEADERBOARD -->
+  <section class="slide" data-ch="3" data-title="Final Leaderboard" data-spk="Nishan · Roll 5" data-time="11:55 – 12:45"
+    data-notes="Exact numbers: DQN wins speed (596 episodes, 37% faster than SARSA, 42% faster than PPO) AND top greedy return (+7.90, 13.10 steps, 100%). SAC wins safety (1,486 penalties, 86% fewer than SARSA, 79% fewer than DQN). SARSA hits 100%, PPO 99.6%, SAC 99.0%.">
+    <div class="hdr">
+      <div><div class="tag-sec c-emerald">06 · Final Leaderboard</div><h2 class="title">Two different winners — and everyone reaches the finish line</h2></div>
+    </div>
+    <div class="body">
+      <div class="r d1 card" style="padding:12px 16px;">
+        <table class="t">
+          <thead><tr><th>Agent</th><th>Exploration</th><th style="text-align:center">Episodes to +5.0</th><th style="text-align:center">Total −10 penalties</th><th style="text-align:center">Greedy return</th><th style="text-align:center">Steps · success</th></tr></thead>
+          <tbody>
+            <tr><td><b class="c-cyan">DQN</b></td><td>ε-greedy + replay</td><td style="text-align:center; background:rgba(56,189,248,.12)"><b class="c-cyan">596 ★ fastest</b></td><td style="text-align:center">7,192</td><td style="text-align:center"><b class="c-cyan">+7.90 ± 2.64</b></td><td style="text-align:center">13.10 · <b>100.0%</b></td></tr>
+            <tr><td><b class="c-emerald">Discrete SAC</b></td><td>Boltzmann (τ)</td><td style="text-align:center">808</td><td style="text-align:center; background:rgba(52,211,153,.12)"><b class="c-emerald">1,486 ★ safest</b></td><td style="text-align:center">+5.83 ± 20.85</td><td style="text-align:center">14.96 · <b>99.0%</b></td></tr>
+            <tr><td><b class="c-gold">SARSA</b></td><td>ε-greedy</td><td style="text-align:center">944</td><td style="text-align:center" class="c-rose">10,908</td><td style="text-align:center">+7.01 ± 3.03</td><td style="text-align:center">13.99 · <b>100.0%</b></td></tr>
+            <tr><td><b class="c-violet">PPO</b></td><td>softmax + entropy</td><td style="text-align:center">1,023</td><td style="text-align:center">3,606</td><td style="text-align:center">+6.60 ± 13.42</td><td style="text-align:center">14.32 · <b>99.6%</b></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="g g2" style="flex:1;">
+        <div class="r d2 card" style="display:flex; flex-direction:column; justify-content:center; gap:12px;">
+          <div class="lbl c-cyan">Speed · episodes to +5.0 (shorter = better)</div>
+          <div class="bar-row"><b>DQN</b><div class="bar-trk"><div class="bar-fill" style="--w:58%; background:var(--cyan)"></div></div><b class="c-cyan">596</b></div>
+          <div class="bar-row"><span>SAC</span><div class="bar-trk"><div class="bar-fill" style="--w:79%; background:var(--emerald)"></div></div><span>808</span></div>
+          <div class="bar-row"><span>SARSA</span><div class="bar-trk"><div class="bar-fill" style="--w:92%; background:var(--gold)"></div></div><span>944</span></div>
+          <div class="bar-row"><span>PPO</span><div class="bar-trk"><div class="bar-fill" style="--w:100%; background:var(--violet)"></div></div><span>1,023</span></div>
+        </div>
+        <div class="r d3 card" style="display:flex; flex-direction:column; justify-content:center; gap:12px;">
+          <div class="lbl c-emerald">Safety · total illegal moves (shorter = better)</div>
+          <div class="bar-row"><b>SAC</b><div class="bar-trk"><div class="bar-fill" style="--w:14%; background:var(--emerald)"></div></div><b class="c-emerald">1,486</b></div>
+          <div class="bar-row"><span>PPO</span><div class="bar-trk"><div class="bar-fill" style="--w:33%; background:var(--violet)"></div></div><span>3,606</span></div>
+          <div class="bar-row"><span>DQN</span><div class="bar-trk"><div class="bar-fill" style="--w:66%; background:var(--cyan)"></div></div><span>7,192</span></div>
+          <div class="bar-row"><span>SARSA</span><div class="bar-trk"><div class="bar-fill" style="--w:100%; background:var(--rose)"></div></div><span class="c-rose">10,908</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================== 15 SENSITIVITY -->
+  <section class="slide" data-ch="3" data-title="When Learning Breaks" data-spk="Nishan · Roll 5" data-time="12:45 – 13:40"
+    data-notes="Three honest failure modes. alpha=0.90 oscillates near -100 by overshooting noisy targets. gamma=0.50 shrinks +20 by 0.5^13 ≈ 0.0001 so pickup never gets credit. Fixed eps=0.30 keeps making -10 mistakes forever; decaying eps fixes it.">
+    <div class="hdr">
+      <div><div class="tag-sec c-gold">07 · When Learning Breaks</div><h2 class="title">Three knobs, three classic failure modes</h2></div>
+    </div>
+    <div class="body">
+      <div class="r d1 fig" style="flex:1.5;"><img src="assets/dark_fig3_sensitivity.png" alt="sensitivity" /></div>
+      <div class="g g3" style="flex:0.8;">
+        <div class="r d2 card top" style="--a:var(--cyan); padding:12px 15px;"><b>α · learning rate</b><div class="lbl c-cyan" style="margin:4px 0;">sweet spot 0.20 – 0.50</div><p style="font-size:12.3px; color:var(--sub); line-height:1.45;"><code>0.05</code> crawls. <code>0.90</code> <b class="c-rose">bounces around −100</b> — each noisy target overwrites what it learned.</p></div>
+        <div class="r d3 card top" style="--a:var(--emerald); padding:12px 15px;"><b>γ · discount</b><div class="lbl c-emerald" style="margin:4px 0;">sweet spot 0.95 – 0.99</div><p style="font-size:12.3px; color:var(--sub); line-height:1.45;"><code>0.50</code> shrinks +20 to <code>0.5¹³ ≈ 0.0001</code> by the start — the pickup stage never hears about the reward.</p></div>
+        <div class="r d4 card top" style="--a:var(--violet); padding:12px 15px;"><b>ε · exploration</b><div class="lbl c-violet" style="margin:4px 0;">best: decay 1.0 → 0.01</div><p style="font-size:12.3px; color:var(--sub); line-height:1.45;">Fixed <code>0.30</code> never stops making −10 mistakes (stuck below −25). Decay explores early, exploits late.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================== 16 HEATMAPS -->
+  <section class="slide" data-ch="3" data-title="Inside the Agent's Head" data-spk="Nishan · Roll 5" data-time="13:40 – 14:30"
+    data-notes="Learned value map for Y(4,0) -> G(0,4). Stage 1 climbs to +5.2 at Y, arrows route around walls into PICKUP. Stage 2 flips and climbs to +20 at G. Dead-end (4,1) stays low because optimal routes never use it. 14-step optimal rollout on the right.">
+    <div class="hdr">
+      <div><div class="tag-sec c-emerald">08 · Inside the Agent's Head</div><h2 class="title">What did it learn? A value map that flips direction at pickup</h2></div>
+    </div>
+    <div class="body">
+      <div class="r d1 fig" style="flex:1.55;"><img src="assets/dark_fig4_heatmaps.png" alt="value heatmaps" /></div>
+      <div class="g g3" style="flex:0.75;">
+        <div class="r d2 card" style="border-left:3px solid var(--cyan); padding:12px 15px;"><b class="c-cyan">Stage 1 · uphill to Y</b><p style="font-size:12.3px; color:var(--sub); margin-top:4px; line-height:1.45;">Values rise toward <b>+5.2</b> at Y(4,0); every arrow avoids the walls and ends in <code>PICKUP</code>.</p></div>
+        <div class="r d3 card" style="border-left:3px solid var(--gold); padding:12px 15px;"><b class="c-gold">Stage 2 · the map flips</b><p style="font-size:12.3px; color:var(--sub); margin-top:4px; line-height:1.45;">With the passenger aboard, values climb to <b>+20.0</b> at G(0,4). Dead-end <code>(4,1)</code> stays low — no good route uses it.</p></div>
+        <div class="r d4 card" style="border-left:3px solid var(--emerald); padding:12px 15px;"><b class="c-emerald">14 steps · zero mistakes</b><p style="font-size:12.3px; color:var(--sub); margin-top:4px; line-height:1.45;">From <code>(0,1)</code> the agent drives <code>→ Y → G</code> in the theoretical minimum, no wall hits, no penalties.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================== 17 REPO -->
+  <section class="slide" data-ch="3" data-title="Repo & Limitations" data-spk="Nishan · Roll 5" data-time="14:30 – 15:15"
+    data-notes="Everything is reproducible in three commands from GitHub. Honest limits: tabular 500 states doesn't need generalization, and transitions are deterministic. Next: deep function approximation on larger maps, stochastic traffic, multi-taxi fleets.">
+    <div class="hdr">
+      <div><div class="tag-sec" style="color:var(--text)">09 · Reproduce &amp; Reflect</div><h2 class="title">Open source, honest about limits, clear next steps</h2></div>
+    </div>
+    <div class="body">
+      <div class="g g2" style="flex:1;">
+        <div class="r d1 card" style="display:flex; flex-direction:column; gap:10px;">
+          <div class="lbl c-cyan">Repository · RL_FINAL_MINIPROJECT</div>
+          <pre class="code" style="flex:1;">RL_FINAL_MINIPROJECT/
+├── Taxi_Pickup_Dropoff_RL_Comparison.ipynb  <span class="cm"># 9 sections</span>
+├── environment.yml                          <span class="cm"># conda: rl_taxi</span>
+├── README.md                                <span class="cm"># maths + results</span>
+└── figures/
+    ├── fig1_taxi_v3_layout.png              <span class="cm"># map &amp; MDP</span>
+    ├── fig2_algorithm_comparison.png        <span class="cm"># 4-panel benchmark</span>
+    ├── fig3_hyperparameter_sensitivity.png  <span class="cm"># α γ ε sweeps</span>
+    ├── fig4_policy_heatmaps_and_trajectory  <span class="cm"># V*(s) maps</span>
+    └── fig5_taxi_animation_comparison.gif   <span class="cm"># 2×2 rollout</span></pre>
+          <div class="lbl c-muted">Reproduce in three commands</div>
+          <pre class="code"><span class="c-emerald">$</span> git clone https://github.com/devsijanpandey12/RL_FINAL_MINIPROJECT.git
+<span class="c-emerald">$</span> conda env create -f environment.yml &amp;&amp; conda activate rl_taxi
+<span class="c-emerald">$</span> jupyter notebook Taxi_Pickup_Dropoff_RL_Comparison.ipynb</pre>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          <div class="r d2 card" style="border-left:3px solid var(--rose); flex:1;">
+            <div class="lbl c-rose" style="margin-bottom:8px;">Limitations</div>
+            <ul class="ls" style="--a:var(--rose);">
+              <li><b>Small and tabular.</b> 500 states fit in a table — no generalisation needed. Images or continuous positions would need neural networks.</li>
+              <li><b>Deterministic world.</b> Real dispatch has random travel times, traffic and road closures.</li>
+            </ul>
+          </div>
+          <div class="r d3 card" style="border-left:3px solid var(--emerald); flex:1;">
+            <div class="lbl c-emerald" style="margin-bottom:8px;">Next steps</div>
+            <ul class="ls" style="--a:var(--emerald);">
+              <li><b>Bigger cities.</b> 20×20+ grids with PyTorch Double-DQN and neural SAC.</li>
+              <li><b>Messier cities.</b> Stochastic traffic, fuel limits and cooperating multi-taxi fleets.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================== 18 CLOSING -->
+  <section class="slide" data-ch="3" data-title="Which Agent Would You Hire?" data-spk="Team closing" data-time="15:15 – 16:00"
+    data-notes="Interactive close: click Speed / Safety / Stability to light up the matching agent. DQN for speed (-37% episodes & +7.90 greedy return), SAC for safety (-86% penalties), PPO/SARSA for stability and simplicity. Thank you on behalf of Sijan (11), Ashim (22) and Nishan (5).">
+    <div class="hdr">
+      <div><div class="tag-sec c-gold">10 · Conclusion</div><h2 class="title">So… which agent would you hire to drive your taxi?</h2></div>
+    </div>
+    <div class="body">
+      <div class="r d1" style="display:flex; align-items:center; gap:8px;">
+        <span class="lbl c-muted">What matters most to you?</span>
+        <button class="btn pick" data-k="speed">⚡ Speed</button>
+        <button class="btn pick" data-k="safety">🛡 Safety</button>
+        <button class="btn pick" data-k="stable">⚖ Stability</button>
+        <button class="btn pick on" data-k="all">Show all</button>
+      </div>
+      <div class="g g3" style="flex:1;">
+        <div class="r d2 route" data-k="speed" style="--a:var(--cyan); border-top:3px solid var(--cyan);">
+          <div><span class="pill c-cyan">SPEED</span><h3 style="font-family:var(--head); font-size:30px; margin:12px 0 8px;" class="c-cyan">Hire DQN</h3>
+          <p style="font-size:14px; color:var(--sub); line-height:1.55;">Replay + target network squeezes the most out of every sparse +20 — <b>37% fewer episodes</b> (596 vs 944).</p></div>
+          <div class="lbl c-muted" style="border-top:1px solid var(--border); padding-top:9px;">When experience is expensive</div>
+        </div>
+        <div class="r d3 route" data-k="safety" style="--a:var(--emerald); border-top:3px solid var(--emerald);">
+          <div><span class="pill c-emerald">SAFETY</span><h3 style="font-family:var(--head); font-size:30px; margin:12px 0 8px;" class="c-emerald">Hire Discrete SAC</h3>
+          <p style="font-size:14px; color:var(--sub); line-height:1.55;">Boltzmann entropy + twin critics stop repeating bad moves — <b>86% fewer illegal penalties</b> (1,486 vs 10,908).</p></div>
+          <div class="lbl c-muted" style="border-top:1px solid var(--border); padding-top:9px;">When mistakes are costly</div>
+        </div>
+        <div class="r d4 route" data-k="stable" style="--a:var(--violet); border-top:3px solid var(--violet);">
+          <div><span class="pill c-violet">STABILITY</span><h3 style="font-family:var(--head); font-size:30px; margin:12px 0 8px;" class="c-violet">Hire PPO / SARSA</h3>
+          <p style="font-size:14px; color:var(--sub); line-height:1.55;">PPO's clip prevents destructive jumps (<b>99.6%</b>); SARSA is the simplest route to an exact <b>100%</b> policy.</p></div>
+          <div class="lbl c-muted" style="border-top:1px solid var(--border); padding-top:9px;">When you want predictable training</div>
+        </div>
+      </div>
+      <div class="r d5 card elev" style="display:flex; justify-content:space-between; align-items:center; padding:14px 20px;">
+        <div>
+          <div class="lbl c-muted">Thank you for watching</div>
+          <div style="font-family:var(--head); font-size:23px; font-weight:700; margin-top:4px;">Sijan Pandey <span class="c-cyan" style="font-family:var(--mono); font-size:13px;">(11)</span> · Ashim Shrestha <span class="c-violet" style="font-family:var(--mono); font-size:13px;">(22)</span> · Nishan <span class="c-emerald" style="font-family:var(--mono); font-size:13px;">(5)</span></div>
+          <div style="font-family:var(--mono); font-size:11.5px; color:var(--muted); margin-top:4px;">github.com/devsijanpandey12/RL_FINAL_MINIPROJECT</div>
+        </div>
+        <div style="display:flex; align-items:center; gap:12px; background:#F8FAFC; padding:8px 12px; border-radius:10px;">
+          <img src="assets/dark_github_qr.png" alt="QR" style="width:82px; height:82px;" />
+          <div style="font-family:var(--mono); font-size:11px; color:#070B14; line-height:1.45;"><b>Scan for</b><br/>code &amp;<br/>notebook</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div id="chapter"><div class="num" id="ch-num">CHAPTER 02 / 03</div><div class="name" id="ch-name">The Four Agents</div><div class="who" id="ch-who">SARSA · DQN · PPO · DISCRETE SAC</div><div class="bar"></div></div>
+  <footer id="foot"><span>TAXI-V4 MISSION CONTROL · Sijan Pandey (11) · Ashim Shrestha (22) · Nishan (5)</span><span id="foot-ch"></span></footer>
+</div>
+</div>
+
+<nav id="dock">
+  <button class="db" id="b-prev">◀</button><span id="cnt">01 / 20</span><button class="db" id="b-next">▶</button>
+  <span style="width:1px; height:16px; background:var(--border);"></span>
+  <button class="db" id="b-notes">Notes</button><button class="db" id="b-grid">Grid</button><button class="db" id="b-fs">Full</button>
+  <span id="timer">16:00</span>
+</nav>
+<aside id="notes"><div class="h"><span id="n-spk"></span><span id="n-tm"></span></div><div class="b" id="n-body"></div></aside>
+<div id="grid"><div style="max-width:1220px; margin:0 auto; display:flex; justify-content:space-between; align-items:center;"><h2 style="font-family:var(--head);">All 20 slides · 3 chapters · 16 minutes</h2><button class="btn" id="g-close">✕ Close</button></div><div class="tgrid" id="g-list"></div></div>
+
+<script>
+const TAXI = {"pi":[4,4,4,4,0,0,0,0,0,0,0,0,0,0,0,0,5,0,0,0,3,3,3,3,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,2,2,2,2,0,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,2,2,2,2,0,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,4,4,4,4,0,0,0,0,0,0,0,0,0,5,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,0,1,0,0,1,1,1,1,2,2,2,2,0,0,0,0,2,2,2,2,1,2,0,2,1,1,1,1,2,2,2,2,3,3,3,3,2,2,2,2,1,2,3,2,3,3,3,3,1,1,1,1,3,3,3,3,2,2,2,2,3,1,3,2,3,3,3,3,1,1,1,1,3,3,3,3,0,0,0,0,3,1,3,0,3,3,3,3,1,1,1,1,3,3,3,3,0,0,0,0,3,1,3,0,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,1,1,0,1,1,1,1,1,1,1,1,4,4,4,4,1,1,1,1,1,1,5,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,4,4,4,4,1,1,1,5,1,1,1,1,1,1,1,1,1,1,1,1,3,3,3,3,1,1,1,3],"v":[18.0,5.21,10.95,6.54,-3.28,5.21,-3.28,-0.49,5.21,0.53,10.95,1.61,-1.47,0.53,-1.47,6.54,20.0,6.54,12.58,7.93,16.1,3.95,9.4,5.21,-2.39,6.54,-2.39,0.53,3.95,-0.49,9.4,0.53,-0.49,1.61,-0.49,7.93,18.0,7.93,10.95,9.4,7.93,-1.47,2.75,-0.49,2.75,14.29,2.75,6.54,2.75,-1.47,7.93,-0.49,0.53,2.75,0.53,9.4,9.4,16.1,9.4,10.95,6.54,-2.39,1.61,-1.47,3.95,16.1,3.95,7.93,1.61,-2.39,6.54,-1.47,1.61,3.95,1.61,10.95,7.93,18.0,7.93,12.58,5.21,-3.28,0.53,-2.39,5.21,18.0,5.21,9.4,0.53,-3.28,5.21,-2.39,0.53,2.75,0.53,9.4,6.54,20.0,6.54,10.95,16.1,3.95,9.4,5.21,-2.39,6.54,-2.39,0.53,6.54,1.61,12.58,2.75,-0.49,1.61,-0.49,7.93,18.0,7.93,14.29,9.4,14.29,2.75,7.93,3.95,-1.47,7.93,-1.47,1.61,5.21,0.53,10.95,1.61,0.53,2.75,0.53,9.4,16.1,9.4,12.58,10.95,9.4,-0.49,3.95,0.53,1.61,12.58,1.61,5.21,3.95,-0.49,9.4,0.53,1.61,3.95,1.61,10.95,10.95,14.29,10.95,12.58,7.93,-1.47,2.75,-0.49,2.75,14.29,2.75,6.54,2.75,-1.47,7.93,-0.49,2.75,5.21,2.75,12.58,9.4,16.1,9.4,14.29,6.54,-2.39,1.61,-1.47,3.95,16.1,3.95,7.93,1.61,-2.39,6.54,-1.47,1.61,3.95,1.61,10.95,7.93,18.0,7.93,12.58,14.29,2.75,7.93,3.95,-1.47,7.93,-1.47,1.61,7.93,2.75,14.29,3.95,0.53,2.75,0.53,9.4,16.1,9.4,16.1,10.95,12.58,1.61,6.54,2.75,-0.49,9.4,-0.49,2.75,6.54,1.61,12.58,2.75,1.61,3.95,1.61,10.95,14.29,10.95,14.29,12.58,10.95,0.53,5.21,1.61,0.53,10.95,0.53,3.95,5.21,0.53,10.95,1.61,2.75,5.21,2.75,12.58,12.58,12.58,12.58,14.29,9.4,-0.49,3.95,0.53,1.61,12.58,1.61,5.21,3.95,-0.49,9.4,0.53,3.95,6.54,3.95,14.29,10.95,14.29,10.95,16.1,7.93,-1.47,2.75,-0.49,2.75,14.29,2.75,6.54,2.75,-1.47,7.93,-0.49,2.75,5.21,2.75,12.58,9.4,16.1,9.4,14.29,12.58,1.61,6.54,2.75,-2.39,6.54,-2.39,0.53,9.4,3.95,16.1,5.21,-0.49,1.61,-0.49,7.93,14.29,7.93,18.0,9.4,10.95,0.53,5.21,1.61,-1.47,7.93,-1.47,1.61,5.21,0.53,10.95,1.61,0.53,2.75,0.53,9.4,12.58,9.4,12.58,10.95,9.4,-0.49,3.95,0.53,-0.49,9.4,-0.49,2.75,3.95,-0.49,9.4,0.53,1.61,3.95,1.61,10.95,10.95,10.95,10.95,12.58,7.93,-1.47,2.75,-0.49,0.53,10.95,0.53,3.95,2.75,-1.47,7.93,-0.49,5.21,7.93,5.21,16.1,9.4,12.58,9.4,18.0,6.54,-2.39,1.61,-1.47,1.61,12.58,1.61,5.21,1.61,-2.39,6.54,-1.47,3.95,6.54,3.95,14.29,7.93,14.29,7.93,16.1,10.95,0.53,5.21,1.61,-3.28,5.21,-3.28,-0.49,10.95,5.21,18.0,6.54,-1.47,0.53,-1.47,6.54,12.58,6.54,20.0,7.93,9.4,-0.49,3.95,0.53,-2.39,6.54,-2.39,0.53,3.95,-0.49,9.4,0.53,-0.49,1.61,-0.49,7.93,10.95,7.93,10.95,9.4,7.93,-1.47,2.75,-0.49,-1.47,7.93,-1.47,1.61,2.75,-1.47,7.93,-0.49,0.53,2.75,0.53,9.4,9.4,9.4,9.4,10.95,6.54,-2.39,1.61,-1.47,-0.49,9.4,-0.49,2.75,1.61,-2.39,6.54,-1.47,6.54,9.4,6.54,18.0,7.93,10.95,7.93,20.0,5.21,-3.28,0.53,-2.39,0.53,10.95,0.53,3.95,0.53,-3.28,5.21,-2.39,5.21,7.93,5.21,16.1,6.54,12.58,6.54,18.0]};
+const CURVES = {"sarsa":{"rewards":[-767.0,-762.55,-761.52,-758.81,-744.34,-741.2,-731.27,-705.68,-676.3,-634.72,-616.75,-589.3,-561.9,-529.67,-512.92,-485.27,-450.48,-403.98,-369.95,-342.13,-327.18,-310.42,-298.13,-302.93,-284.37,-267.88,-255.37,-262.55,-232.02,-224.48,-222.35,-224.72,-199.8,-162.32,-168.45,-134.6,-114.53,-114.68,-104.83,-108.58,-101.6,-110.78,-107.82,-92.42,-90.63,-85.92,-77.33,-69.62,-64.87,-62.35,-59.22,-63.1,-54.88,-43.18,-39.5,-34.92,-25.12,-26.07,-24.45,-26.77,-34.62,-33.57,-34.77,-27.43,-28.48,-27.37,-19.7,-16.82,-14.23,-7.9,-5.0,-2.48,-1.63,-2.33,0.23,-0.52,-0.57,-0.9,-2.87,-0.67,-0.07,1.28,1.7,1.28,3.78,3.43,2.88,1.27,1.08,1.93,0.82,1.35,1.65,2.98,3.43,3.98,5.23,5.18,5.77,6.23,6.68,6.27,6.0,6.33,5.92,4.65,4.78,3.87,4.05,3.88,3.72,4.68,4.4,3.65,3.43,3.6,4.12,4.13,3.47,5.42,5.67,5.65,5.58,5.85,6.73,6.88,6.78,7.12,7.2,6.77,6.78,6.45,7.1,7.02,6.82,6.97,6.85,6.63,6.28,5.93,5.8,5.75,4.98,4.8,5.03,4.97,4.9,4.58,5.22,5.28,4.77,4.93,4.82,5.53,5.28,5.77,5.92,5.55,5.72,5.42,6.05,5.72,5.82,6.08,6.43,6.55,6.23,6.4,6.45,6.05,6.27,6.47,6.37,6.25,6.4,7.2,6.73,6.27,6.43,6.93,6.68,6.62,6.72,6.43,6.7,6.57,6.7,6.32,6.43,7.1,6.95,6.85,7.03,7.05,7.3,6.97,6.92,6.93,6.32,6.55,6.47,6.47,6.55,6.57,7.07,7.18,6.97,7.25,7.0,6.83,6.67,6.68,7.03,6.93,6.58,6.77,6.95,6.85,6.52,6.53,7.05,6.97,6.6,6.32,6.27,6.18,6.15,6.42,6.67,7.23,7.17,7.18,6.92,6.45,6.33,5.95,6.27,6.43,6.78,6.3,6.48,6.42,6.37,6.37,6.4,7.0,7.12,7.3,6.87,6.48],"steps":[200.0,193.36,192.67,195.0,193.51,194.78,195.57,193.98,192.55,185.77,187.25,187.25,184.9,179.52,177.42,174.07,166.58,152.53,144.4,138.58,139.48,135.62,135.93,141.18,135.27,130.03,126.47,129.75,115.87,115.33,116.45,118.62,109.9,94.47,99.7,84.0,74.83,77.48,73.08,75.88,74.1,79.53,78.32,69.77,70.08,67.47,62.33,59.12,56.67,55.75,55.17,57.65,53.38,45.93,43.75,40.62,33.42,36.12,34.65,36.07,41.97,41.52,42.52,37.88,38.63,37.97,32.1,29.97,28.63,23.65,21.2,20.03,19.78,20.33,18.22,18.52,18.72,19.05,20.87,19.27,18.82,17.92,17.8,18.07,16.02,16.52,17.07,17.93,18.12,17.57,18.53,18.0,17.85,16.97,16.37,15.82,14.87,14.92,14.33,14.02,13.87,14.13,13.95,13.77,14.18,15.6,15.47,16.08,16.2,16.07,16.08,15.12,15.4,16.45,16.67,16.65,16.43,16.42,16.93,15.13,14.88,14.9,14.82,14.55,13.67,13.52,13.77,13.58,13.65,14.08,14.22,14.55,13.9,13.98,14.18,14.03,14.15,14.22,14.57,14.92,14.75,14.65,15.27,15.45,15.22,14.98,15.2,15.52,14.88,14.82,15.33,15.32,15.43,14.87,15.27,14.93,14.78,15.3,15.13,15.28,14.65,14.98,14.88,14.47,14.27,14.15,14.47,14.3,14.25,14.35,14.13,14.08,14.18,14.15,14.0,13.65,14.12,14.28,14.12,13.77,13.87,13.93,13.83,13.97,13.7,13.83,13.85,14.08,13.82,13.6,13.75,13.85,13.67,13.8,13.7,13.88,13.93,13.77,14.23,14.0,14.08,14.08,14.0,14.13,13.78,13.67,13.88,13.75,13.85,13.87,14.03,14.02,13.67,13.77,14.27,14.23,14.05,14.0,14.18,14.17,13.5,13.58,13.8,13.93,14.13,14.22,14.4,13.98,13.73,13.47,13.53,13.52,13.78,14.4,14.67,14.9,14.58,14.42,14.07,14.25,14.07,14.13,14.18,14.18,14.15,13.85,13.73,13.7,13.83,14.07],"illegal":[63.0,63.45,63.43,62.87,61.49,60.94,59.72,57.05,53.98,50.23,48.03,44.98,42.32,39.45,37.9,35.32,32.4,29.07,26.27,24.02,22.22,20.78,19.5,19.33,17.97,16.72,15.8,16.12,14.38,13.68,13.4,13.38,11.7,9.48,9.47,7.57,6.43,6.12,5.55,5.62,5.12,5.53,5.3,4.62,4.38,4.15,3.77,3.27,3.05,2.83,2.55,2.67,2.27,1.83,1.67,1.58,1.33,1.1,1.08,1.18,1.4,1.33,1.32,1.13,1.17,1.12,0.92,0.83,0.73,0.58,0.53,0.38,0.32,0.33,0.28,0.33,0.32,0.32,0.33,0.27,0.25,0.2,0.17,0.18,0.13,0.12,0.12,0.2,0.2,0.17,0.18,0.18,0.17,0.12,0.13,0.13,0.1,0.1,0.1,0.08,0.05,0.07,0.12,0.1,0.1,0.08,0.08,0.12,0.08,0.12,0.13,0.13,0.13,0.1,0.1,0.08,0.05,0.05,0.07,0.05,0.05,0.05,0.07,0.07,0.07,0.07,0.05,0.03,0.02,0.02,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.02,0.02,0.02,0.05,0.07,0.08,0.08,0.08,0.12,0.1,0.1,0.1,0.1,0.1,0.08,0.08,0.07,0.05,0.03,0.03,0.02,0.02,0.03,0.03,0.03,0.03,0.05,0.03,0.03,0.03,0.03,0.03,0.07,0.07,0.05,0.05,0.07,0.07,0.02,0.02,0.05,0.05,0.03,0.05,0.05,0.05,0.07,0.07,0.07,0.05,0.07,0.08,0.03,0.03,0.03,0.03,0.02,0.0,0.02,0.02,0.03,0.05,0.05,0.05,0.05,0.05,0.03,0.02,0.02,0.02,0.0,0.02,0.03,0.03,0.03,0.03,0.03,0.02,0.0,0.0,0.02,0.03,0.03,0.05,0.05,0.07,0.08,0.07,0.07,0.05,0.07,0.07,0.03,0.03,0.03,0.03,0.02,0.0,0.02,0.02,0.02,0.02,0.05,0.05,0.05,0.05,0.05,0.05,0.02,0.02,0.0,0.03,0.05],"total_illegal":10908},"dqn":{"rewards":[-446.0,-781.18,-739.86,-728.13,-722.9,-716.73,-699.55,-653.23,-622.88,-576.93,-520.9,-472.88,-407.58,-372.75,-331.9,-315.33,-280.42,-247.92,-230.57,-190.77,-170.55,-138.12,-119.13,-100.15,-93.53,-89.88,-71.27,-55.25,-51.28,-36.57,-31.97,-22.02,-17.93,-14.87,-11.58,-12.22,-7.8,-6.65,-6.93,-5.78,-5.8,-4.88,-5.88,-5.5,-3.73,-2.45,-0.87,0.45,1.2,1.13,2.07,3.3,1.72,1.68,1.95,2.33,2.25,2.35,3.6,4.3,4.78,5.13,4.15,4.72,5.25,5.23,5.43,4.88,6.03,6.0,5.73,5.7,5.27,5.73,5.73,5.77,5.97,5.93,6.32,6.3,6.4,6.03,5.92,5.58,5.82,6.22,6.47,6.67,6.93,7.33,7.0,6.8,6.72,7.12,6.95,7.02,7.25,7.67,7.78,7.97,7.95,7.82,7.9,7.33,7.7,7.42,7.37,7.57,7.52,7.9,7.43,7.15,7.5,7.38,7.33,7.2,7.15,7.23,6.72,6.68,6.35,6.28,6.35,6.82,7.02,6.85,6.88,6.75,7.07,6.62,6.98,7.13,7.52,8.0,7.65,7.82,7.58,7.55,7.5,7.23,7.12,7.3,7.82,7.93,7.85,8.0,8.08,7.7,7.2,7.07,7.1,7.17,7.35,7.85,7.8,7.78,7.77,7.48,7.3,7.07,7.4,7.48,7.5,7.75,7.95,8.0,7.92,8.07,8.18,7.73,7.57,7.45,7.45,7.32,6.87,7.37,7.53,7.33,7.48,7.83,7.97,7.6,7.48,7.9,7.47,6.87,7.23,7.33,7.45,7.47,7.33,7.4,7.2,7.15,6.98,6.85,7.15,7.32,7.37,7.63,7.42,7.4,7.18,7.23,7.35,7.43,7.73,7.75,7.97,7.83,7.6,7.35,7.42,7.32,7.27,7.35,7.45,7.73,7.63,7.55,7.65,7.72,7.17,7.17,7.37,7.62,7.65,7.3,7.82,7.55,7.4,7.12,6.95,7.08,7.08,7.22,6.9,6.9,6.87,7.1,7.37,6.97,7.32,7.18,7.17,7.08,6.8,7.17,7.13,7.3],"steps":[143.0,194.82,191.0,188.32,191.17,192.14,191.05,186.93,182.63,176.63,165.0,156.88,141.08,132.4,122.25,119.48,111.17,101.77,95.42,83.32,79.25,68.22,60.03,53.9,51.78,50.33,41.67,36.45,35.63,29.32,27.57,24.12,23.18,21.62,19.98,20.32,18.75,17.75,18.63,18.08,18.25,18.23,18.78,19.0,17.83,17.45,16.77,16.2,16.05,15.67,15.33,15.0,15.83,15.87,15.3,15.52,15.6,15.5,14.85,14.45,14.42,13.92,14.0,13.58,13.35,13.37,13.17,13.72,13.47,13.65,13.92,13.95,14.38,14.07,14.07,14.03,13.83,14.02,13.78,13.95,14.0,14.22,14.18,14.37,14.13,13.88,13.63,13.58,13.32,12.92,13.1,13.3,13.53,13.28,13.45,13.53,13.3,12.88,12.77,12.58,12.75,12.88,12.95,13.37,13.0,13.28,13.18,12.98,13.03,12.65,12.97,13.25,13.2,13.32,13.22,13.5,13.7,13.47,13.68,13.72,14.05,14.12,13.9,13.58,13.38,13.4,13.22,13.05,12.88,13.18,13.12,13.12,13.03,12.85,13.05,12.88,13.12,13.0,13.05,13.32,13.43,13.4,12.88,12.92,12.85,12.7,12.77,12.85,13.2,13.18,13.3,13.23,13.05,12.85,13.05,13.22,13.23,13.52,13.55,13.78,13.45,13.37,13.35,13.1,12.9,12.85,12.93,12.78,12.67,12.97,13.13,13.25,13.25,13.23,13.23,12.88,12.87,13.07,12.92,12.72,12.88,13.1,13.07,12.65,13.08,13.68,13.47,13.52,13.55,13.53,13.52,13.45,13.5,13.4,13.57,13.7,13.55,13.38,13.48,13.22,13.13,13.15,13.37,13.32,13.2,13.27,13.12,13.1,12.88,13.02,13.25,13.5,13.43,13.53,13.43,13.35,13.25,12.97,13.22,13.3,13.35,13.28,13.53,13.38,13.18,12.93,12.9,12.95,12.73,13.0,13.15,13.43,13.6,13.62,13.62,13.63,13.65,13.65,13.53,13.45,13.18,13.43,13.23,13.07,13.23,13.32,13.6,13.38,13.57,13.7],"illegal":[36.0,65.36,61.43,60.35,59.37,58.61,56.85,52.32,49.5,45.22,40.52,36.2,30.93,28.18,24.85,23.32,20.52,18.07,16.88,13.88,12.17,9.98,8.78,7.43,6.93,6.65,5.58,4.38,4.03,3.1,2.78,2.1,1.75,1.58,1.4,1.43,1.12,1.1,1.03,0.97,0.95,0.85,0.9,0.83,0.77,0.67,0.57,0.48,0.42,0.47,0.4,0.3,0.38,0.38,0.42,0.35,0.35,0.35,0.28,0.25,0.2,0.22,0.32,0.3,0.27,0.27,0.27,0.27,0.17,0.15,0.15,0.15,0.15,0.13,0.13,0.13,0.13,0.12,0.1,0.08,0.07,0.08,0.1,0.12,0.12,0.1,0.1,0.08,0.08,0.08,0.1,0.1,0.08,0.07,0.07,0.05,0.05,0.05,0.05,0.05,0.03,0.03,0.02,0.03,0.03,0.03,0.05,0.05,0.05,0.05,0.07,0.07,0.03,0.03,0.05,0.03,0.02,0.03,0.07,0.07,0.07,0.07,0.08,0.07,0.07,0.08,0.1,0.13,0.12,0.13,0.1,0.08,0.05,0.02,0.03,0.03,0.03,0.05,0.05,0.05,0.05,0.03,0.03,0.02,0.03,0.03,0.02,0.05,0.07,0.08,0.07,0.07,0.07,0.03,0.02,0.0,0.0,0.0,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.03,0.03,0.03,0.03,0.05,0.1,0.08,0.07,0.07,0.07,0.05,0.02,0.03,0.05,0.05,0.05,0.05,0.03,0.02,0.0,0.0,0.02,0.02,0.03,0.05,0.05,0.05,0.03,0.03,0.02,0.02,0.05,0.05,0.05,0.05,0.05,0.03,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.03,0.03,0.03,0.03,0.02,0.02,0.0,0.0,0.03,0.05,0.05,0.05,0.05,0.08,0.05,0.05,0.05,0.05,0.05,0.03,0.03,0.02,0.05,0.05,0.07,0.05,0.05,0.07,0.05,0.08,0.07,0.07,0.07,0.05,0.03,0.0],"total_illegal":7192},"ppo":{"rewards":[-21.0,-657.18,-642.48,-636.77,-591.27,-545.94,-532.47,-459.83,-404.32,-339.53,-304.72,-284.18,-251.58,-247.05,-234.0,-229.33,-225.2,-215.27,-207.15,-197.97,-195.0,-189.65,-176.85,-171.03,-169.32,-155.15,-144.52,-130.7,-126.7,-125.57,-124.53,-122.6,-117.07,-125.85,-122.52,-115.33,-108.82,-107.7,-103.87,-86.48,-90.8,-86.08,-75.23,-74.7,-66.8,-66.65,-58.28,-61.5,-66.08,-61.35,-62.05,-63.93,-63.68,-55.28,-46.42,-42.97,-45.2,-39.27,-33.57,-30.82,-30.72,-24.23,-16.47,-22.62,-24.85,-28.87,-31.0,-28.53,-31.98,-26.42,-18.8,-15.8,-10.42,-15.1,-10.72,-13.82,-12.07,-17.78,-20.85,-23.78,-24.55,-17.4,-22.05,-12.88,-12.97,-5.67,-4.85,-4.87,-0.43,-3.15,-2.82,-4.62,-7.07,-7.55,-7.83,-4.13,0.12,2.23,3.57,4.47,3.5,4.05,4.28,2.3,3.52,1.53,2.08,2.17,1.68,3.42,3.55,4.48,4.83,4.28,4.68,4.75,4.5,4.95,5.35,5.93,5.62,6.08,6.5,6.58,6.9,5.43,5.32,4.82,4.47,5.03,4.52,5.57,6.22,6.28,6.28,5.97,6.48,6.75,6.52,6.75,6.52,6.92,6.95,6.85,6.73,6.88,7.28,6.92,6.62,6.63,6.13,5.82,5.88,6.07,6.03,6.25,7.07,6.98,7.2,7.2,7.48,7.52,6.93,7.0,7.08,7.38,7.55,7.22,7.45,7.63,7.73,7.35,6.92,7.17,7.28,7.4,6.95,7.17,7.18,6.93,6.78,6.45,6.15,6.17,6.42,6.78,6.7,7.08,7.43,7.2,7.12,7.02,7.37,7.1,6.85,6.87,6.72,6.55,6.65,6.9,7.35,7.38,7.27,7.18,6.93,6.78,6.72,6.95,6.8,7.23,7.12,7.28,7.08,6.98,7.05,7.02,7.2,6.98,7.12,7.32,7.67,7.35,7.2,6.93,6.85,6.43,6.08,6.38,6.62,7.02,7.0,7.32,7.62,7.47,7.2,6.98,6.85,6.82,6.85,6.73,6.8,6.98,7.22,7.07,7.27,7.22,7.32,7.4,7.57,7.77],"steps":[15.0,176.91,180.19,186.58,185.24,180.35,183.07,179.93,176.87,173.08,169.92,171.88,170.88,174.5,175.4,174.73,175.4,172.87,167.5,164.57,165.6,161.9,157.55,154.73,156.57,146.3,139.12,130.4,127.3,126.22,126.53,126.3,121.57,129.75,127.17,121.88,116.17,114.9,111.87,96.48,99.5,95.38,86.08,85.2,78.65,79.65,73.23,76.1,79.88,75.8,76.45,77.33,76.73,69.68,61.92,59.42,61.15,55.57,50.67,47.92,47.82,42.03,34.97,40.77,42.85,46.57,48.55,46.23,49.33,44.77,38.0,35.65,30.62,33.9,30.02,31.97,30.22,35.43,38.05,41.73,42.65,36.65,40.95,32.28,32.32,25.67,24.85,24.87,20.63,23.0,22.82,24.32,26.32,26.8,27.23,23.88,20.13,18.32,17.43,16.53,17.35,16.8,16.57,18.4,17.18,19.17,18.77,18.68,19.17,17.58,17.45,16.52,16.02,16.57,16.17,16.1,16.35,15.9,15.65,15.07,15.38,14.92,14.5,14.42,14.1,15.42,15.53,15.88,16.23,15.67,16.18,15.28,14.63,14.72,14.57,14.88,14.37,14.1,14.33,14.1,14.48,14.08,14.05,14.15,14.27,14.12,13.72,14.08,14.38,14.22,14.57,14.88,14.82,14.63,14.67,14.6,13.93,13.87,13.65,13.65,13.37,13.33,13.92,13.85,13.77,13.47,13.3,13.63,13.4,13.37,13.27,13.65,14.08,13.83,13.72,13.6,13.9,13.68,13.67,13.92,14.07,14.4,14.85,14.83,14.58,14.22,14.3,13.92,13.57,13.8,13.73,13.83,13.48,13.75,14.0,13.98,14.28,14.45,14.35,14.1,13.65,13.62,13.73,13.82,14.07,14.22,14.28,14.05,14.05,13.47,13.58,13.42,13.47,13.57,13.5,13.68,13.5,13.72,13.73,13.53,13.33,13.5,13.65,13.92,14.0,14.42,14.47,14.32,14.08,13.68,13.7,13.38,13.38,13.53,13.8,14.02,14.15,14.18,14.15,14.27,14.2,14.02,13.78,13.93,13.73,13.78,13.68,13.6,13.43,13.23],"illegal":[3.0,54.0,51.81,50.32,45.51,41.08,39.25,31.57,25.82,19.12,15.6,13.1,9.67,8.68,7.13,6.77,6.23,5.45,5.18,4.57,4.08,3.9,3.0,2.67,2.23,1.92,1.65,1.2,1.22,1.25,1.1,0.95,0.9,0.85,0.77,0.63,0.58,0.6,0.55,0.48,0.55,0.48,0.47,0.47,0.43,0.38,0.28,0.28,0.33,0.3,0.27,0.3,0.3,0.27,0.18,0.12,0.13,0.13,0.08,0.08,0.08,0.08,0.08,0.08,0.1,0.13,0.15,0.13,0.13,0.1,0.08,0.05,0.05,0.17,0.15,0.2,0.2,0.22,0.27,0.18,0.17,0.12,0.12,0.1,0.07,0.03,0.03,0.03,0.05,0.05,0.03,0.07,0.12,0.12,0.1,0.1,0.08,0.05,0.0,0.0,0.02,0.02,0.02,0.03,0.03,0.03,0.02,0.02,0.02,0.0,0.0,0.0,0.02,0.02,0.02,0.02,0.02,0.02,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.02,0.02,0.03,0.03,0.03,0.03,0.02,0.02,0.0,0.02,0.02,0.02,0.02,0.02,0.02,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.02,0.03,0.03,0.03,0.03,0.03,0.02,0.0,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.02,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.02,0.02,0.02,0.02,0.02,0.02,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.02,0.02,0.02,0.02,0.02,0.02,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.02,0.03,0.03,0.03,0.05,0.05,0.05,0.03,0.03,0.03,0.02,0.02,0.0,0.02,0.02,0.02,0.02,0.02,0.05,0.03,0.03,0.03,0.03,0.03,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],"total_illegal":3606},"sac":{"rewards":[-479.0,-421.73,-381.86,-349.23,-319.59,-308.16,-294.55,-264.4,-247.25,-235.6,-235.03,-226.43,-217.53,-212.73,-210.03,-208.53,-207.38,-203.2,-201.07,-195.03,-191.53,-185.43,-178.17,-170.0,-165.23,-161.53,-157.78,-154.02,-149.62,-157.95,-159.12,-157.07,-148.88,-143.72,-134.65,-118.6,-111.05,-103.98,-97.05,-85.33,-78.27,-83.2,-74.43,-71.05,-61.43,-66.9,-63.0,-50.3,-44.18,-44.53,-42.0,-34.07,-30.73,-26.73,-27.0,-17.12,-19.38,-18.02,-19.57,-19.75,-16.57,-15.58,-15.92,-13.53,-11.0,-8.45,-7.62,-6.2,-2.1,-1.33,-2.28,-0.98,-3.0,-2.3,-0.87,-0.48,0.55,0.92,3.88,3.93,3.83,3.88,4.62,4.58,4.1,3.13,2.08,2.32,2.82,3.33,3.63,5.33,7.0,7.08,7.22,6.85,7.37,7.52,7.15,7.5,7.12,6.88,6.28,5.6,5.57,5.72,6.12,6.25,6.35,6.87,7.1,6.67,5.62,5.92,5.92,5.67,5.32,5.88,7.25,7.33,7.42,7.95,8.3,8.2,7.62,7.47,7.67,7.53,7.47,7.32,7.53,7.6,7.7,7.65,7.8,8.03,8.13,8.13,8.23,8.43,8.25,7.67,7.63,7.72,7.42,6.98,7.22,7.78,7.93,8.02,7.98,8.02,8.0,7.95,7.57,7.18,7.6,7.57,7.25,7.2,7.53,8.0,7.67,7.9,7.98,8.12,8.08,8.0,8.2,8.38,8.57,8.33,8.37,8.23,8.15,7.85,7.55,7.7,7.85,7.63,7.57,7.62,8.02,8.0,7.65,8.15,8.05,8.0,7.85,7.68,8.0,7.65,7.62,7.63,7.65,7.55,7.3,7.6,7.53,7.72,7.77,7.98,8.05,8.08,8.35,8.32,8.4,8.23,8.45,8.32,8.02,8.07,8.13,8.38,8.35,8.72,9.07,8.78,8.62,8.55,8.4,7.92,8.05,8.27,8.25,8.43,8.38,8.52,8.35,8.28,8.42,8.4,8.22,8.12,8.12,8.32,8.18,8.0,8.42,8.6,8.48,8.22,8.12,8.18,8.2,8.22,8.35,8.28,8.1,7.78],"steps":[200.0,200.0,199.43,197.0,192.12,192.16,191.95,191.95,192.15,193.5,197.33,197.73,196.33,196.33,196.33,196.33,195.53,192.45,190.72,185.13,182.88,175.68,172.32,166.25,162.88,160.58,158.78,157.12,152.57,159.7,159.92,157.42,149.03,143.67,136.2,121.7,113.15,106.78,100.25,89.88,83.32,85.4,80.08,77.75,70.63,75.15,72.0,62.15,56.48,54.38,52.45,46.02,43.13,40.68,40.05,33.42,34.18,32.72,33.22,33.55,31.87,30.13,30.77,28.53,27.05,24.5,23.82,23.6,20.85,20.68,21.33,20.78,21.75,20.9,19.47,19.08,17.9,17.38,15.62,15.42,15.52,15.62,15.33,15.52,15.85,17.27,17.87,17.78,17.28,16.77,16.62,14.92,13.7,13.62,13.63,13.85,13.33,13.18,13.55,13.35,13.73,13.82,14.42,14.95,14.83,14.68,14.13,14.3,14.05,13.68,13.6,13.73,14.33,14.03,14.18,14.43,14.78,14.52,13.75,13.67,13.58,13.05,12.7,12.8,13.23,13.38,13.18,13.32,13.38,13.53,13.47,13.4,13.3,13.35,13.2,12.97,12.87,12.87,12.77,12.57,12.75,13.18,13.22,13.13,13.43,13.87,13.63,13.22,13.07,12.98,13.02,12.98,13.0,12.9,13.28,13.67,13.25,13.28,13.45,13.65,13.32,12.85,13.18,12.95,13.02,12.88,12.92,13.0,12.8,12.62,12.43,12.52,12.48,12.62,12.7,13.0,13.3,13.3,13.15,13.37,13.43,13.38,12.98,13.0,13.35,12.85,12.95,13.0,13.15,13.32,13.0,13.35,13.38,13.37,13.35,13.3,13.55,13.25,13.32,13.13,13.08,13.02,12.95,12.92,12.65,12.68,12.6,12.77,12.55,12.68,12.98,12.93,12.87,12.62,12.65,12.28,11.93,12.22,12.38,12.45,12.6,13.08,12.95,12.73,12.75,12.57,12.62,12.48,12.65,12.72,12.58,12.6,12.78,12.88,12.88,12.68,12.82,13.0,12.58,12.4,12.52,12.78,12.88,12.82,12.8,12.78,12.65,12.72,12.9,13.22],"illegal":[31.0,24.64,20.38,17.06,14.39,13.12,11.63,8.28,6.32,4.83,4.27,3.27,2.43,1.9,1.6,1.43,1.43,1.35,1.38,1.45,1.35,1.67,1.35,1.23,1.12,1.0,0.9,0.67,0.68,0.7,0.88,1.05,1.15,1.25,1.27,1.37,1.52,1.52,1.55,1.52,1.5,1.82,1.55,1.43,1.23,1.3,1.22,0.9,0.85,1.08,1.02,0.85,0.8,0.67,0.77,0.48,0.65,0.7,0.82,0.8,0.63,0.72,0.68,0.67,0.55,0.55,0.53,0.4,0.25,0.18,0.22,0.13,0.25,0.27,0.27,0.27,0.28,0.3,0.17,0.18,0.18,0.17,0.12,0.1,0.12,0.07,0.12,0.1,0.1,0.1,0.08,0.08,0.03,0.03,0.02,0.03,0.03,0.03,0.03,0.02,0.02,0.03,0.03,0.05,0.07,0.07,0.08,0.05,0.07,0.05,0.03,0.07,0.12,0.12,0.1,0.1,0.1,0.07,0.0,0.0,0.0,0.0,0.0,0.0,0.02,0.02,0.02,0.02,0.02,0.02,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.02,0.02,0.02,0.02,0.02,0.02,0.0,0.0,0.0,0.0,0.0,0.0,0.02,0.02,0.02,0.02,0.02,0.03,0.02,0.02,0.02,0.02,0.02,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.02,0.02,0.02,0.02,0.02,0.02,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.02,0.02,0.02,0.02,0.02,0.02,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],"total_illegal":1486}};
+
+const ALG = [
+  { k: 'dqn',   name: 'DQN',   col: '#38BDF8', conv: 596 },
+  { k: 'sac',   name: 'SAC',   col: '#34D399', conv: 808 },
+  { k: 'sarsa', name: 'SARSA', col: '#FACC15', conv: 944 },
+  { k: 'ppo',   name: 'PPO',   col: '#A78BFA', conv: 1023 },
+];
+const ST = [[0,0,'R','#FB7185'],[0,4,'G','#34D399'],[4,0,'Y','#FACC15'],[4,3,'B','#38BDF8']];
+const WALLS = new Set(['0,1','1,1','3,0','4,0','3,2','4,2']);
+const ACT = ['South ↓','North ↑','East →','West ←','PICKUP','DROPOFF'];
+const ARR = ['↓','↑','→','←','P','D'];
+const enc = (r,c,p,d) => ((r*5+c)*5+p)*4+d;
+const CHAPTERS = {
+  1: { n: 'CHAPTER 01 / 03', t: 'The Problem', w: 'GYMNASIUM TAXI-V4 · MDP & SETUP', c: '#38BDF8' },
+  2: { n: 'CHAPTER 02 / 03', t: 'The Four Agents', w: 'SARSA · DQN · PPO · DISCRETE SAC', c: '#A78BFA' },
+  3: { n: 'CHAPTER 03 / 03', t: 'The Results', w: 'LEARNING RACE · SENSITIVITY · HEATMAPS', c: '#34D399' },
+};
+
+/* ---------- scaling ---------- */
+function fit() { const s = Math.min(innerWidth/1280, innerHeight/720); document.getElementById('deck').style.transform = `scale(${s})`; }
+addEventListener('resize', fit); fit();
+
+/* ---------- auto-hide cursor & dock when idle ---------- */
+let idleT; function wake() { document.body.classList.remove('idle'); clearTimeout(idleT); idleT = setTimeout(() => document.body.classList.add('idle'), 2500); }
+addEventListener('mousemove', wake); wake();
+
+/* ---------- navigation ---------- */
+const slides = [...document.querySelectorAll('.slide')];
+let cur = 0, chTimer;
+function showChapter(ch) {
+  const c = CHAPTERS[ch], el = document.getElementById('chapter');
+  document.getElementById('ch-num').textContent = c.n;
+  document.getElementById('ch-name').textContent = c.t;
+  const who = document.getElementById('ch-who'); who.textContent = c.w;
+  el.style.color = c.c; document.getElementById('ch-name').style.color = '#F8FAFC';
+  el.classList.add('show'); clearTimeout(chTimer); chTimer = setTimeout(() => el.classList.remove('show'), 1500);
+}
+function go(i, opts = {}) {
+  const prev = cur; cur = Math.max(0, Math.min(slides.length-1, i));
+  slides.forEach((s, j) => s.classList.toggle('active', j === cur));
+  const s = slides[cur], lab = `${String(cur+1).padStart(2,'0')} / ${slides.length}`;
+  document.getElementById('cnt').textContent = lab;
+  document.querySelector('#progress > div').style.width = `${(cur+1)/slides.length*100}%`;
+  document.getElementById('foot-ch').textContent = `CH.${s.dataset.ch} · ${s.dataset.time}`;
+  document.getElementById('n-spk').textContent = `SLIDE ${String(cur+1).padStart(2,'0')} · ${s.dataset.title.toUpperCase()}`;
+  document.getElementById('n-tm').textContent = s.dataset.time;
+  document.getElementById('n-body').textContent = s.dataset.notes;
+  document.getElementById('ambient').style.opacity = (cur === 0) ? '0.60' : '0.14';
+  if (!opts.silent && cur > prev && s.dataset.ch !== slides[prev].dataset.ch) showChapter(s.dataset.ch);
+  s.querySelectorAll('.cu').forEach(el => { const v = +el.dataset.v, t0 = performance.now(); (function tk(n){ const p = Math.min(1,(n-t0)/700); el.textContent = Math.round(v*(1-Math.pow(1-p,3))); if (p<1) requestAnimationFrame(tk); })(t0); });
+  if (cur === 0) startTyping();
+  if (s.dataset.title === 'The Learning Race') drawRace();
+}
+document.getElementById('b-prev').onclick = () => go(cur-1);
+document.getElementById('b-next').onclick = () => go(cur+1);
+const notes = document.getElementById('notes'), bN = document.getElementById('b-notes');
+const tNotes = () => { notes.classList.toggle('open'); bN.classList.toggle('on', notes.classList.contains('open')); };
+bN.onclick = tNotes;
+const gridEl = document.getElementById('grid');
+function openGrid() {
+  document.getElementById('g-list').innerHTML = slides.map((s,i) => `<div class="th ${i===cur?'cur':''}" onclick="go(${i},{silent:true});closeGrid()"><div style="font-family:var(--mono);font-size:10.5px;color:${CHAPTERS[s.dataset.ch].c}">${String(i+1).padStart(2,'0')} · CH.${s.dataset.ch} · ${s.dataset.time}</div><div style="font-family:var(--head);font-size:16px;font-weight:700;margin-top:4px">${s.dataset.title}</div><div style="font-size:11.5px;color:var(--muted);margin-top:3px">${CHAPTERS[s.dataset.ch].t}</div></div>`).join('');
+  gridEl.classList.add('open');
+}
+function closeGrid() { gridEl.classList.remove('open'); }
+document.getElementById('b-grid').onclick = () => gridEl.classList.contains('open') ? closeGrid() : openGrid();
+document.getElementById('g-close').onclick = closeGrid;
+document.getElementById('b-fs').onclick = () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+let rem = 960, tid = null; const tEl = document.getElementById('timer');
+const tTimer = () => { if (tid) { clearInterval(tid); tid = null; } else tid = setInterval(() => { if (rem > 0) rem--; tEl.textContent = `${String(rem/60|0).padStart(2,'0')}:${String(rem%60).padStart(2,'0')}`; tEl.style.color = rem < 60 ? '#FB7185' : ''; }, 1000); };
+tEl.onclick = tTimer;
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return; wake();
+  const k = e.key.toLowerCase();
+  if (['arrowright',' ','pagedown'].includes(k)) { e.preventDefault(); go(cur+1); }
+  else if (['arrowleft','pageup'].includes(k)) { e.preventDefault(); go(cur-1); }
+  else if (k === 'n') tNotes(); else if (k === 'g') gridEl.classList.contains('open') ? closeGrid() : openGrid();
+  else if (k === 'escape') closeGrid(); else if (k === 't') tTimer(); else if (k === 'f') document.getElementById('b-fs').click();
+  else if (k === 'home') go(0, {silent:true}); else if (k === 'end') go(slides.length-1, {silent:true});
+});
+
+/* ---------- cover typing ---------- */
+let typeId;
+function startTyping() {
+  const msg = 'python train.py --env Taxi-v4 --agents sarsa,dqn,ppo,sac --episodes 2500  ✔ all agents delivered';
+  const el = document.getElementById('typed'); let i = 0; clearInterval(typeId); el.textContent = '';
+  typeId = setInterval(() => { el.textContent = msg.slice(0, ++i); if (i >= msg.length) clearInterval(typeId); }, 28);
+}
+
+/* ---------- ambient taxi traffic ---------- */
+(function ambient() {
+  const cv = document.getElementById('ambient'), ctx = cv.getContext('2d'), G = 64, cols = ['#FACC15','#38BDF8','#A78BFA','#34D399'];
+  const ag = Array.from({length: 14}, (_, i) => ({ x: (Math.random()*20|0)*G, y: (Math.random()*11|0)*G, d: i%4, v: 1.2 + (i%3)*0.45, c: cols[i%4], tr: [] }));
+  const D = [[1,0],[-1,0],[0,1],[0,-1]];
+  (function loop() {
+    ctx.clearRect(0,0,1280,720);
+    for (const a of ag) {
+      a.x += D[a.d][0]*a.v; a.y += D[a.d][1]*a.v;
+      if (Math.abs(a.x % G) < a.v && Math.abs(a.y % G) < a.v && Math.random() < 0.3) { a.x = Math.round(a.x/G)*G; a.y = Math.round(a.y/G)*G; a.d = Math.random()*4|0; }
+      if (a.x < 0) a.x = 1280; if (a.x > 1280) a.x = 0; if (a.y < 0) a.y = 720; if (a.y > 720) a.y = 0;
+      a.tr.push([a.x,a.y]); if (a.tr.length > 28) a.tr.shift();
+      ctx.beginPath(); a.tr.forEach((p,j) => j ? ctx.lineTo(p[0],p[1]) : ctx.moveTo(p[0],p[1]));
+      ctx.strokeStyle = a.c; ctx.globalAlpha = .22; ctx.lineWidth = 2; ctx.stroke();
+      ctx.globalAlpha = .9; ctx.fillStyle = a.c; ctx.beginPath(); ctx.arc(a.x, a.y, 3, 0, 7); ctx.fill();
+    }
+    ctx.globalAlpha = 1; requestAnimationFrame(loop);
+  })();
+})();
+
+/* ---------- slide 3: state encoder ---------- */
+const s3 = { r: 2, c: 2, p: 2, d: 1 };
+function drawS3() {
+  const g = document.getElementById('s3-grid'); g.innerHTML = '';
+  for (let r = 0; r < 5; r++) for (let c = 0; c < 5; c++) {
+    const el = document.createElement('div'); el.className = 'tc' + (WALLS.has(`${r},${c}`) ? ' we' : '');
+    let h = `<span class="xy">(${r},${c})</span>`; const st = ST.find(x => x[0]===r && x[1]===c);
+    if (st) { el.style.background = st[3]+'22'; el.style.borderColor = st[3]; h += `<span class="sb" style="color:${st[3]}">${st[2]}</span>`; }
+    if (s3.p < 4 && ST[s3.p][0]===r && ST[s3.p][1]===c) h += `<span class="vt c-gold">PASS</span>`;
+    if (ST[s3.d][0]===r && ST[s3.d][1]===c) h += `<span style="position:absolute;top:2px;right:4px;font-family:var(--mono);font-size:8.5px;font-weight:700" class="c-emerald">DEST</span>`;
+    if (s3.r===r && s3.c===c) h += `<div class="taxi ${s3.p===4?'ld':''}">${s3.p===4?'TAXI+P':'TAXI'}</div>`;
+    el.innerHTML = h; el.onclick = () => { s3.r = r; s3.c = c; drawS3(); }; g.appendChild(el);
+  }
+  const id = enc(s3.r, s3.c, s3.p, s3.d);
+  document.getElementById('s3-id').textContent = `State ${id}`;
+  document.getElementById('s3-eq').innerHTML = `s = ((5·<b class="c-cyan">${s3.r}</b> + <b class="c-cyan">${s3.c}</b>)·5 + <b class="c-gold">${s3.p}</b>)·4 + <b class="c-emerald">${s3.d}</b> = <b style="color:#fff;font-size:17px">${id}</b>`;
+}
+document.querySelectorAll('.s3p').forEach(b => b.onclick = () => { s3.p = +b.dataset.p; document.querySelectorAll('.s3p').forEach(x => x.classList.toggle('on', x===b)); drawS3(); });
+document.querySelectorAll('.s3d').forEach(b => b.onclick = () => { s3.d = +b.dataset.d; document.querySelectorAll('.s3d').forEach(x => x.classList.toggle('on', x===b)); drawS3(); });
+drawS3();
+
+/* ---------- slide 8: credit propagation ---------- */
+let pc = 0;
+function drawProp() {
+  document.getElementById('prop-lbl').textContent = `cycle ${pc}`;
+  const val = d => +(20*Math.pow(0.95,d) - d).toFixed(1);
+  const row = (id, reach, col) => { document.getElementById(id).innerHTML = [0,1,2,3,4,5].map(i => { const d = 5-i, on = i===5 || d <= reach, v = i===5 ? 20 : val(d);
+    return `<div style="background:${on?col+'22':'#0F172A'};border:1px solid ${on?col:'#1E293B'};border-radius:8px;padding:9px 2px;text-align:center;transition:all .3s"><div style="font-family:var(--mono);font-size:9px;color:#64748B">${i===5?'DROP':'s'+(i+1)}</div><div style="font-family:var(--mono);font-size:13px;font-weight:700;color:${on?col:'#475569'}">${on?'+'+v:'0.0'}</div></div>`; }).join(''); };
+  row('prop-s', pc, '#FACC15'); row('prop-d', pc*2, '#38BDF8');
+}
+document.getElementById('prop-go').onclick = () => { if (pc < 5) pc++; drawProp(); };
+document.getElementById('prop-rs').onclick = () => { pc = 0; drawProp(); };
+drawProp();
+
+/* ---------- slide 9: PPO clip ---------- */
+let pPos = true, pEps = 0.2;
+function drawPPO() {
+  const svg = document.getElementById('ppo-svg'), W = 460, H = 210, L = 40, R = 16, T = 16, B = 30;
+  const x0 = .4, x1 = 1.6, y0 = pPos ? .3 : -1.7, y1 = pPos ? 1.7 : -.3;
+  const sx = x => L + (x-x0)/(x1-x0)*(W-L-R), sy = y => H-B - (y-y0)/(y1-y0)*(H-T-B);
+  const lo = 1-pEps, hi = 1+pEps, A = pPos ? 1 : -1;
+  ['ppo-ev','ppo-lo','ppo-hi'].forEach((id,i) => document.getElementById(id).textContent = [pEps,lo,hi][i].toFixed(2));
+  let u = [], c = [];
+  for (let i = 0; i <= 120; i++) { const r = x0 + i/120*(x1-x0); u.push(`${sx(r)},${sy(r*A)}`); c.push(`${sx(r)},${sy(Math.min(r*A, Math.max(lo,Math.min(hi,r))*A))}`); }
+  const px = sx(pPos?hi:lo), py = sy(pPos?hi:-lo);
+  svg.innerHTML = `<rect x="${sx(lo)}" y="${T}" width="${sx(hi)-sx(lo)}" height="${H-T-B}" fill="rgba(167,139,250,.14)"/>
+    <line x1="${L}" y1="${H-B}" x2="${W-R}" y2="${H-B}" stroke="#334155"/><line x1="${L}" y1="${T}" x2="${L}" y2="${H-B}" stroke="#334155"/>
+    <line x1="${sx(1)}" y1="${T}" x2="${sx(1)}" y2="${H-B}" stroke="#475569" stroke-dasharray="4 4"/>
+    <polyline points="${u.join(' ')}" fill="none" stroke="#64748B" stroke-width="2" stroke-dasharray="5 5"/>
+    <polyline points="${c.join(' ')}" fill="none" stroke="#A78BFA" stroke-width="3.5"/>
+    <circle cx="${px}" cy="${py}" r="6" fill="#FACC15"/>
+    <text x="${px + (pPos?-10:10)}" y="${py + (pPos?20:-12)}" fill="#FACC15" font-size="11" font-family="JetBrains Mono" font-weight="700" text-anchor="${pPos?'end':'start'}">clipped — no bigger step</text>
+    <text x="${sx(lo)}" y="${T+12}" fill="#C4B5FD" font-size="10" font-family="JetBrains Mono" text-anchor="middle">${lo.toFixed(2)}</text>
+    <text x="${sx(hi)}" y="${T+12}" fill="#C4B5FD" font-size="10" font-family="JetBrains Mono" text-anchor="middle">${hi.toFixed(2)}</text>
+    <text x="${W/2}" y="${H-8}" fill="#8899B4" font-size="10.5" font-family="JetBrains Mono" text-anchor="middle">ratio r(θ) = π_new / π_old</text>`;
+}
+document.getElementById('ppo-p').onclick = () => { pPos = true; document.getElementById('ppo-p').classList.add('on'); document.getElementById('ppo-n').classList.remove('on'); drawPPO(); };
+document.getElementById('ppo-n').onclick = () => { pPos = false; document.getElementById('ppo-n').classList.add('on'); document.getElementById('ppo-p').classList.remove('on'); drawPPO(); };
+document.getElementById('ppo-er').oninput = e => { pEps = +e.target.value; drawPPO(); };
+drawPPO();
+
+/* ---------- slide 10: SAC tau lab ---------- */
+function drawSAC() {
+  const tau = +document.getElementById('tau-r').value; document.getElementById('tau-v').textContent = tau.toFixed(2);
+  const q = [-1,-1,0,-1,-10,-10], lb = ['S','N','E★','W','P−10','D−10'], eg = [5,5,75,5,5,5];
+  const ex = q.map(v => Math.exp(v/tau)), sm = ex.reduce((a,b) => a+b), sac = ex.map(v => v/sm*100), ill = sac[4]+sac[5];
+  document.getElementById('sac-ill').textContent = `SAC illegal ${ill < .01 ? ill.toFixed(4) : ill.toFixed(2)}%`;
+  const box = (t, arr, ok) => `<div style="background:var(--well);border:1px solid var(--border);border-radius:10px;padding:10px 8px 6px;display:flex;flex-direction:column;gap:8px"><div style="font-family:var(--mono);font-size:10.5px;font-weight:700;text-align:center">${t}</div><div style="flex:1;display:flex;align-items:flex-end;gap:5px">${arr.map((p,i) => { const col = i>=4 ? '#FB7185' : ok; return `<div style="flex:1;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end"><span style="font-family:var(--mono);font-size:9.5px;font-weight:700;color:${col};margin-bottom:3px">${p<.1?'~0%':p.toFixed(0)+'%'}</span><div style="width:80%;height:${Math.max(2,Math.min(100,p))}%;background:${col};border-radius:4px 4px 0 0;transition:height .18s"></div><span style="font-family:var(--mono);font-size:8.8px;color:${i>=4?'#FB7185':'#8899B4'};margin-top:4px">${lb[i]}</span></div>`; }).join('')}</div></div>`;
+  document.getElementById('sac-lab').innerHTML = box('ε-greedy · 10% illegal', eg, '#38BDF8') + box(`SAC · τ = ${tau.toFixed(2)}`, sac, '#34D399');
+}
+document.getElementById('tau-r').oninput = drawSAC; drawSAC();
+
+/* ---------- slide 12: live simulator ---------- */
+const sim = { r:0, c:1, p:2, d:1, sr:0, sc:1, sp:2, n:0, g:0, done:false, hm:true, tm:null };
+const hmBg = (v, ld) => ld ? `rgba(52,211,153,${(.08 + Math.max(0,Math.min(1,(v+2)/22))*.48).toFixed(2)})` : `rgba(56,189,248,${(.06 + Math.max(0,Math.min(1,(v+5)/11))*.42).toFixed(2)})`;
+function drawSim() {
+  const g = document.getElementById('sim-grid'); g.innerHTML = '';
+  for (let r = 0; r < 5; r++) for (let c = 0; c < 5; c++) {
+    const sid = enc(r,c,sim.p,sim.d), v = TAXI.v[sid], a = TAXI.pi[sid];
+    const el = document.createElement('div'); el.className = 'tc' + (WALLS.has(`${r},${c}`) ? ' we' : '');
+    if (sim.hm) el.style.background = hmBg(v, sim.p === 4);
+    const st = ST.find(x => x[0]===r && x[1]===c); let h = `<span class="xy">(${r},${c})</span>`;
+    if (st) { el.style.borderColor = st[3]; h += `<span style="position:absolute;top:2px;right:4px;font-family:var(--head);font-size:13px;font-weight:700;color:${st[3]}">${st[2]}</span>`; }
+    if (sim.hm) h += `<span style="font-size:17px;font-weight:700;color:rgba(248,250,252,.85)">${ARR[a]}</span><span class="vt" style="color:${sim.p===4?'#34D399':'#38BDF8'}">${v.toFixed(1)}</span>`;
+    if (sim.p < 4 && ST[sim.p][0]===r && ST[sim.p][1]===c) h += `<span style="position:absolute;bottom:2px;left:4px;font-family:var(--mono);font-size:8px;font-weight:700" class="c-gold">PASS</span>`;
+    if (ST[sim.d][0]===r && ST[sim.d][1]===c) h += `<span style="position:absolute;bottom:2px;left:4px;font-family:var(--mono);font-size:8px;font-weight:700" class="c-emerald">GOAL</span>`;
+    if (sim.r===r && sim.c===c) h += `<div class="taxi ${sim.done?'dn':sim.p===4?'ld':''}">${sim.done?'DONE!':sim.p===4?'TAXI+P':'TAXI'}</div>`;
+    el.innerHTML = h; el.onclick = () => { stopSim(); sim.sr = r; sim.sc = c; resetSim(); }; g.appendChild(el);
+  }
+  const st = document.getElementById('sim-st');
+  if (sim.done) { st.textContent = 'DELIVERED · +20'; st.className = 'pill c-emerald'; }
+  else if (sim.p === 4) { st.textContent = 'STAGE 2 · MAP FLIPPED → DESTINATION'; st.className = 'pill c-emerald'; }
+  else { st.textContent = 'STAGE 1 · TO PASSENGER'; st.className = 'pill c-cyan'; }
+  document.getElementById('sim-hud').textContent = `steps ${sim.n} · return ${sim.g >= 0 ? '+' : ''}${sim.g}`;
+}
+const logSim = h => { const l = document.getElementById('sim-log'); l.innerHTML += `<div>${h}</div>`; l.scrollTop = l.scrollHeight; };
+const stopSim = () => { if (sim.tm) { clearInterval(sim.tm); sim.tm = null; } };
+function stepSim() {
+  if (sim.done) return; const a = TAXI.pi[enc(sim.r,sim.c,sim.p,sim.d)]; let rw = -1;
+  if (a===0 && sim.r<4) sim.r++; else if (a===1 && sim.r>0) sim.r--;
+  else if (a===2 && sim.c<4 && !WALLS.has(`${sim.r},${sim.c}`)) sim.c++;
+  else if (a===3 && sim.c>0 && !WALLS.has(`${sim.r},${sim.c-1}`)) sim.c--;
+  else if (a===4 && sim.p<4 && sim.r===ST[sim.p][0] && sim.c===ST[sim.p][1]) sim.p = 4;
+  else if (a===5 && sim.p===4 && sim.r===ST[sim.d][0] && sim.c===ST[sim.d][1]) { rw = 20; sim.done = true; stopSim(); }
+  sim.n++; sim.g += rw;
+  logSim(`${String(sim.n).padStart(2,'0')} <b style="color:${a===5?'#34D399':a===4?'#FACC15':'#38BDF8'}">${ACT[a]}</b> → (${sim.r},${sim.c}) <span class="c-muted">r=${rw>0?'+20':rw}</span>`);
+  drawSim();
+}
+function resetSim() { stopSim(); Object.assign(sim, { r: sim.sr, c: sim.sc, p: sim.sp, n: 0, g: 0, done: false }); document.getElementById('sim-log').innerHTML = `<div class="c-muted">Ready at (${sim.r},${sim.c}) · passenger ${ST[sim.p][2]} → ${ST[sim.d][2]}</div>`; drawSim(); }
+document.getElementById('sim-step').onclick = stepSim;
+document.getElementById('sim-rst').onclick = resetSim;
+document.getElementById('sim-play').onclick = () => { if (sim.done) resetSim(); if (sim.tm) stopSim(); else sim.tm = setInterval(stepSim, 340); };
+document.getElementById('sim-bad').onclick = () => { if (sim.done) return; sim.n++; sim.g -= 10; logSim(`${String(sim.n).padStart(2,'0')} <b class="c-rose">ILLEGAL PICKUP</b> at (${sim.r},${sim.c}) <b class="c-rose">r=−10</b>`); drawSim(); };
+document.getElementById('sim-hm').onclick = e => { sim.hm = !sim.hm; e.target.classList.toggle('on', sim.hm); drawSim(); };
+document.querySelectorAll('.sp').forEach(b => b.onclick = () => { const v = +b.dataset.p; if (v === sim.d) return; sim.sp = v; document.querySelectorAll('.sp').forEach(x => x.classList.toggle('on', x===b)); resetSim(); });
+document.querySelectorAll('.sd').forEach(b => b.onclick = () => { const v = +b.dataset.d; if (v === sim.sp) return; sim.d = v; document.querySelectorAll('.sd').forEach(x => x.classList.toggle('on', x===b)); resetSim(); });
+resetSim();
+
+/* ---------- slide 13: learning race (real training curves) ---------- */
+const RM = { rewards: { lo: -220, hi: 20, ticks: 6, unit: '(60-ep avg return)', opt: 7.9, optL: 'optimal +7.9', better: 'hi' },
+             steps:   { lo: 0, hi: 200, ticks: 5, unit: '(steps per episode)', opt: 13.1, optL: 'optimal 13.1', better: 'lo' },
+             illegal: { lo: 0, hi: 70, ticks: 7, unit: '(illegal moves per episode)', opt: null, better: 'lo' } };
+let rMetric = 'rewards', rIdx = 249, rTimer = null;
+function drawRace() {
+  const cv = document.getElementById('race'), x = cv.getContext('2d'), W = cv.width, H = cv.height, m = RM[rMetric];
+  const L = 92, R = 120, T = 30, B = 64, N = 250;
+  const sx = i => L + i/(N-1)*(W-L-R), sy = v => T + (1 - (Math.max(m.lo, Math.min(m.hi, v)) - m.lo)/(m.hi - m.lo))*(H-T-B);
+  x.clearRect(0,0,W,H); x.font = '22px JetBrains Mono'; x.textBaseline = 'middle';
+  for (let k = 0; k <= m.ticks; k++) { const v = m.lo + k*(m.hi-m.lo)/m.ticks, y = sy(v); x.strokeStyle = 'rgba(148,163,184,.12)'; x.lineWidth = 1; x.beginPath(); x.moveTo(L,y); x.lineTo(W-R,y); x.stroke(); x.fillStyle = '#64748B'; x.textAlign = 'right'; x.fillText(Math.round(v), L-12, y); }
+  x.textAlign = 'center'; for (let e = 0; e <= 2500; e += 500) { x.fillStyle = '#64748B'; x.fillText(e, sx(e/10 - (e===2500?1:0)), H-B+28); }
+  x.fillStyle = '#8899B4'; x.fillText('training episode', (L+W-R)/2, H-14);
+  if (m.opt !== null) { const y = sy(m.opt); x.setLineDash([10,8]); x.strokeStyle = 'rgba(248,250,252,.55)'; x.lineWidth = 2; x.beginPath(); x.moveTo(L,y); x.lineTo(W-R,y); x.stroke(); x.setLineDash([]); x.fillStyle = '#CBD5E1'; x.textAlign = 'left'; x.fillText(m.optL, L+10, y-16); }
+  if (rMetric === 'rewards') ALG.forEach(a => { if (a.conv/10 <= rIdx) { const xx = sx(a.conv/10); x.strokeStyle = a.col; x.globalAlpha = .35; x.setLineDash([4,6]); x.beginPath(); x.moveTo(xx,T); x.lineTo(xx,H-B); x.stroke(); x.setLineDash([]); x.globalAlpha = 1; } });
+  const ends = [];
+  ALG.forEach(a => {
+    const d = CURVES[a.k][rMetric]; x.strokeStyle = a.col; x.lineWidth = 4; x.lineJoin = 'round'; x.shadowColor = a.col; x.shadowBlur = 10;
+    x.beginPath(); for (let i = 0; i <= rIdx; i++) { const px = sx(i), py = sy(d[i]); i ? x.lineTo(px,py) : x.moveTo(px,py); } x.stroke(); x.shadowBlur = 0;
+    const ex = sx(rIdx), ey = sy(d[rIdx]); x.fillStyle = a.col; x.beginPath(); x.arc(ex, ey, 8, 0, 7); x.fill(); ends.push({ a, y: ey, v: d[rIdx] });
+  });
+  ends.sort((p,q) => p.y - q.y); for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i-1].y < 26) ends[i].y = ends[i-1].y + 26;
+  x.textAlign = 'left'; x.font = 'bold 22px JetBrains Mono'; ends.forEach(e => { x.fillStyle = e.a.col; x.fillText(e.a.name, sx(rIdx)+16, e.y); });
+  const ep = (rIdx+1)*10; document.getElementById('race-ep').textContent = `episode ${ep.toLocaleString()}`;
+  document.getElementById('race-scrub').value = rIdx; document.getElementById('race-unit').textContent = m.unit;
+  const sorted = ALG.map(a => ({ a, v: CURVES[a.k][rMetric][rIdx] })).sort((p,q) => m.better === 'hi' ? q.v - p.v : p.v - q.v);
+  document.getElementById('race-board').innerHTML = sorted.map((s,i) => `<div style="display:grid;grid-template-columns:22px 1fr auto;align-items:center;gap:8px;font-family:var(--mono);font-size:13px"><span class="c-muted">${i+1}</span><b style="color:${s.a.col}">${s.a.name}</b><b>${s.v.toFixed(1)}</b></div>`).join('');
+  document.getElementById('race-ms').innerHTML = ALG.map(a => { const hit = ep >= a.conv; return `<div style="display:flex;justify-content:space-between;opacity:${hit?1:.35}"><span><span style="color:${a.col}">●</span> ${a.name}</span><b style="color:${hit?a.col:'#64748B'}">${hit ? 'ep ' + a.conv.toLocaleString() + ' ✔' : 'racing…'}</b></div>`; }).join('') +
+    `<div style="margin-top:6px;font-family:var(--body);font-size:12px;color:var(--sub);line-height:1.5">Totals over 2,500 eps — illegal moves: <b class="c-emerald">SAC ${CURVES.sac.total_illegal.toLocaleString()}</b> · PPO ${CURVES.ppo.total_illegal.toLocaleString()} · DQN ${CURVES.dqn.total_illegal.toLocaleString()} · <b class="c-rose">SARSA ${CURVES.sarsa.total_illegal.toLocaleString()}</b></div>`;
+}
+function playRace() {
+  const btn = document.getElementById('race-play');
+  if (rTimer) { clearInterval(rTimer); rTimer = null; btn.textContent = '▶ Play race'; return; }
+  if (rIdx >= 249) rIdx = 0; btn.textContent = '❚❚ Pause';
+  rTimer = setInterval(() => { rIdx = Math.min(249, rIdx + 1); drawRace(); if (rIdx >= 249) { clearInterval(rTimer); rTimer = null; btn.textContent = '↺ Replay'; } }, 36);
+}
+document.getElementById('race-play').onclick = playRace;
+document.getElementById('race-scrub').oninput = e => { rIdx = +e.target.value; drawRace(); };
+document.querySelectorAll('.rm').forEach(b => b.onclick = () => { rMetric = b.dataset.m; document.querySelectorAll('.rm').forEach(q => q.classList.toggle('on', q===b)); drawRace(); });
+
+/* ---------- slide 18: decision router ---------- */
+document.querySelectorAll('.pick').forEach(b => b.onclick = () => {
+  const k = b.dataset.k; document.querySelectorAll('.pick').forEach(q => q.classList.toggle('on', q===b));
+  document.querySelectorAll('.route').forEach(r => { r.classList.toggle('dim', k !== 'all' && r.dataset.k !== k); r.classList.toggle('lit', r.dataset.k === k); });
+});
+
+const q = new URLSearchParams(location.search);
+document.fonts && document.fonts.ready.then(() => drawRace());
+go(q.has('slide') ? +q.get('slide') - 1 : 0, { silent: true });
+</script>
+</body>
+</html>
